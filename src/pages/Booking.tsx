@@ -39,10 +39,22 @@ const EMPTY: FormState = {
 
 const STEP_LABELS = ['Услуга', 'Дата и время', 'Данные', 'Итог']
 
-// Валидация телефона РФ: только цифры, ровно 11 штук, начинается с 7 или 8
+// Валидация мобильного телефона РФ:
+//   89XXXXXXXXX  — ровно 11 цифр, начинается с 89 (мобильные коды 9XX)
+//   +79XXXXXXXXX — «+» и ровно 11 цифр, начинается с +79
+// Городские номера (84X, 83X…) не проходят — только мобильные.
+// Посторонние символы (пробелы, скобки, тире) не проходят.
 function isPhoneValid(phone: string): boolean {
-  const digits = phone.replace(/\D/g, '')
-  return digits.length === 11 && (digits[0] === '7' || digits[0] === '8')
+  return /^89\d{9}$/.test(phone) || /^\+79\d{9}$/.test(phone)
+}
+
+// Фильтр ввода: оставляем только цифры и необязательный «+» в начале.
+// Это не даёт пользователю ввести скобки, пробелы, тире и т.п.
+function filterPhoneInput(raw: string): string {
+  if (raw.startsWith('+')) {
+    return '+' + raw.slice(1).replace(/\D/g, '')
+  }
+  return raw.replace(/\D/g, '')
 }
 
 export default function Booking() {
@@ -292,9 +304,9 @@ export default function Booking() {
               </label>
               <input
                 type="tel"
-                placeholder="+7 (999) 123-45-67"
+                placeholder="89991234567 или +79991234567"
                 value={form.patientPhone}
-                onChange={e => update('patientPhone', e.target.value)}
+                onChange={e => update('patientPhone', filterPhoneInput(e.target.value))}
                 onBlur={() => setPhoneTouched(true)}
                 className={`w-full border rounded-xl px-4 py-3 focus:outline-none
                             focus:ring-2 text-sm transition-colors ${
@@ -306,7 +318,7 @@ export default function Booking() {
               {/* Ошибка валидации: показываем только после того, как поле потрогали */}
               {phoneTouched && !isPhoneValid(form.patientPhone) && (
                 <p className="text-red-500 text-xs mt-1.5">
-                  Введите номер РФ: 11 цифр, начинается с 7 или 8 (например 79991234567)
+                  Только мобильный номер РФ: 89XXXXXXXXX (11 цифр) или +79XXXXXXXXX (знак + и 11 цифр)
                 </p>
               )}
             </div>
