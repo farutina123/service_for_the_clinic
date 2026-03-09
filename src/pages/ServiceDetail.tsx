@@ -41,16 +41,8 @@ export default function ServiceDetail() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
 
-        {/* ─── Левая колонка: аватар + бейдж доступности + кнопка ─── */}
+        {/* ─── Левая колонка: бейдж доступности + кнопка ─── */}
         <div className="md:col-span-1">
-
-          {/* Большой цветной аватар */}
-          <div
-            className={`w-full aspect-square rounded-2xl ${service.color} flex items-center
-                        justify-center mb-4 shadow-md`}
-          >
-            <span className="text-white font-bold text-5xl">{service.initials}</span>
-          </div>
 
           {/* Бейдж ближайшего слота */}
           <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center mb-4">

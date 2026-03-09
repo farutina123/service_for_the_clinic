@@ -39,20 +39,31 @@ const EMPTY: FormState = {
 
 const STEP_LABELS = ['Услуга', 'Дата и время', 'Данные', 'Итог']
 
+// Валидация телефона РФ: только цифры, ровно 11 штук, начинается с 7 или 8
+function isPhoneValid(phone: string): boolean {
+  const digits = phone.replace(/\D/g, '')
+  return digits.length === 11 && (digits[0] === '7' || digits[0] === '8')
+}
+
 export default function Booking() {
   const [step, setStep] = useState(1)
   const [form, setForm] = useState<FormState>(EMPTY)
   // Расписание генерируется один раз при монтировании компонента
   const [schedule] = useState<ScheduleDay[]>(generateSchedule)
+  // Показывать ошибку телефона только после первого взаимодействия с полем
+  const [phoneTouched, setPhoneTouched] = useState(false)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  // Если пришли из каталога с ?serviceId=X — предвыбираем услугу
+  // Если пришли из каталога с ?serviceId=X — предвыбираем услугу и сразу открываем шаг 2
   useEffect(() => {
     const serviceId = searchParams.get('serviceId')
     if (serviceId) {
       const found = services.find(s => s.id === serviceId)
-      if (found) setForm(prev => ({ ...prev, selectedService: found }))
+      if (found) {
+        setForm(prev => ({ ...prev, selectedService: found }))
+        setStep(2)
+      }
     }
   }, [searchParams])
 
@@ -63,7 +74,7 @@ export default function Booking() {
   function canProceed(): boolean {
     if (step === 1) return form.selectedService !== null
     if (step === 2) return form.selectedDate !== '' && form.selectedTime !== ''
-    if (step === 3) return form.patientName.trim() !== '' && form.patientPhone.trim() !== ''
+    if (step === 3) return form.patientName.trim() !== '' && isPhoneValid(form.patientPhone)
     return true
   }
 
@@ -284,9 +295,20 @@ export default function Booking() {
                 placeholder="+7 (999) 123-45-67"
                 value={form.patientPhone}
                 onChange={e => update('patientPhone', e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                onBlur={() => setPhoneTouched(true)}
+                className={`w-full border rounded-xl px-4 py-3 focus:outline-none
+                            focus:ring-2 text-sm transition-colors ${
+                  phoneTouched && !isPhoneValid(form.patientPhone)
+                    ? 'border-red-400 focus:ring-red-400 bg-red-50'
+                    : 'border-gray-200 focus:ring-blue-500'
+                }`}
               />
+              {/* Ошибка валидации: показываем только после того, как поле потрогали */}
+              {phoneTouched && !isPhoneValid(form.patientPhone) && (
+                <p className="text-red-500 text-xs mt-1.5">
+                  Введите номер РФ: 11 цифр, начинается с 7 или 8 (например 79991234567)
+                </p>
+              )}
             </div>
 
             <div>
