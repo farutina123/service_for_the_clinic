@@ -167,6 +167,16 @@ export default function Booking() {
           <h2 className="text-xl font-bold text-gray-900 mb-1">Выберите услугу или врача</h2>
           <p className="text-gray-500 text-sm mb-6">Нажмите на карточку, чтобы выбрать</p>
 
+          {/* Пустое состояние: каталог услуг недоступен */}
+          {services.length === 0 && (
+            <div className="text-center py-16 text-gray-400">
+              <div className="text-5xl mb-4">🏥</div>
+              <p className="text-lg font-medium text-gray-500">Услуги временно недоступны</p>
+              <p className="text-sm mt-1">Попробуйте зайти позже или позвоните нам</p>
+              <p className="text-sm mt-3 font-medium text-gray-600">+7 (495) 123-45-67</p>
+            </div>
+          )}
+
           <div className="space-y-3">
             {services.map(service => (
               <button
@@ -215,6 +225,16 @@ export default function Booking() {
           <h2 className="text-xl font-bold text-gray-900 mb-1">Выберите дату и время</h2>
           <p className="text-gray-500 text-sm mb-6">Доступные слоты на ближайшие 2 недели</p>
 
+          {/* Пустое состояние: нет доступных дат */}
+          {schedule.length === 0 && (
+            <div className="text-center py-16 text-gray-400">
+              <div className="text-5xl mb-4">📅</div>
+              <p className="text-lg font-medium text-gray-500">Нет доступных дат для записи</p>
+              <p className="text-sm mt-1">Расписание временно недоступно. Позвоните нам.</p>
+              <p className="text-sm mt-3 font-medium text-gray-600">+7 (495) 123-45-67</p>
+            </div>
+          )}
+
           {/* Горизонтальный слайдер дат */}
           <div className="flex gap-2 overflow-x-auto pb-3 mb-6 scrollbar-hide">
             {schedule.map(day => (
@@ -239,27 +259,36 @@ export default function Booking() {
 
           {/* Сетка временных слотов */}
           {form.selectedDate && daySchedule ? (
-            <div>
-              <p className="text-sm font-medium text-gray-700 mb-3">Доступное время</p>
-              <div className="grid grid-cols-4 gap-2">
-                {daySchedule.slots.map(slot => (
-                  <button
-                    key={slot.time}
-                    disabled={!slot.available}
-                    onClick={() => update('selectedTime', slot.time)}
-                    className={`py-2.5 rounded-lg text-sm font-medium transition-all ${
-                      !slot.available
-                        ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                        : form.selectedTime === slot.time
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-400'
-                    }`}
-                  >
-                    {slot.time}
-                  </button>
-                ))}
+            daySchedule.slots.every(s => !s.available) ? (
+              /* Пустое состояние: день выбран, но все слоты заняты */
+              <div className="text-center py-10 text-gray-400">
+                <div className="text-4xl mb-3">😔</div>
+                <p className="font-medium text-gray-500">На этот день нет свободного времени</p>
+                <p className="text-sm mt-1">Выберите другую дату</p>
               </div>
-            </div>
+            ) : (
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-3">Доступное время</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {daySchedule.slots.map(slot => (
+                    <button
+                      key={slot.time}
+                      disabled={!slot.available}
+                      onClick={() => update('selectedTime', slot.time)}
+                      className={`py-2.5 rounded-lg text-sm font-medium transition-all ${
+                        !slot.available
+                          ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                          : form.selectedTime === slot.time
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      {slot.time}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
           ) : (
             <p className="text-gray-400 text-sm text-center py-8">
               ← Выберите дату, чтобы увидеть доступное время
@@ -359,6 +388,21 @@ export default function Booking() {
       )}
 
       {/* ─── Шаг 4: Сводка и подтверждение ───────────────────────── */}
+      {/* Пустое состояние: данные формы потеряны (например после обновления страницы) */}
+      {step === 4 && !form.selectedService && (
+        <div className="text-center py-16 text-gray-400">
+          <div className="text-5xl mb-4">⚠️</div>
+          <p className="text-lg font-medium text-gray-500">Данные формы не заполнены</p>
+          <p className="text-sm mt-1 mb-6">Вернитесь в начало и заполните все шаги</p>
+          <button
+            onClick={() => setStep(1)}
+            className="bg-blue-600 text-white font-medium px-8 py-3 rounded-xl
+                       hover:bg-blue-700 transition-colors"
+          >
+            Начать заново
+          </button>
+        </div>
+      )}
       {step === 4 && form.selectedService && (
         <div>
           <h2 className="text-xl font-bold text-gray-900 mb-1">Подтвердите запись</h2>
