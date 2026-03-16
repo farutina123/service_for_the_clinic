@@ -1,30 +1,24 @@
-# Dependencies
-node_modules/
+# ── Frontend ──────────────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
 
-# Build output
-dist/
-build/
-
-# Local env files
-.env
-.env.local
-.env.*.local
-
-# Vite cache
-.vite/
-
-# Editor
+# ── Editor ────────────────────────────────────────────────────────────────────
 .vscode/
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# Logs
+# ── Logs ──────────────────────────────────────────────────────────────────────
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>МедКлиника — API Тест</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f172a;
+      --surface:  #1e293b;
+      --border:   #334155;
+      --accent:   #38bdf8;
+      --green:    #4ade80;
+      --red:      #f87171;
+      --yellow:   #fbbf24;
+      --text:     #e2e8f0;
+      --muted:    #94a3b8;
+      --radius:   10px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      grid-column: 1 / -1;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+    header h1 span { color: var(--muted); font-weight: 400; font-size: .85rem; margin-left: 10px; }
+
+    #auth-status {
+      display: flex; align-items: center; gap: 10px;
+      font-size: .82rem;
+    }
+    #auth-badge {
+      padding: 3px 10px; border-radius: 20px; font-weight: 600;
+      background: #1e3a2a; color: var(--green); border: 1px solid var(--green);
+    }
+    #auth-badge.guest { background: #2a1e1e; color: var(--muted); border-color: var(--border); }
+    #token-preview { color: var(--muted); font-family: monospace; font-size: .78rem; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Left panel ──────────────────────────────────────────────── */
+    main {
+      padding: 20px;
+      overflow-y: auto;
+      max-height: calc(100vh - 53px);
+    }
+
+    /* ── Section ─────────────────────────────────────────────────── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .section-header {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      user-select: none;
+      background: rgba(255,255,255,.03);
+    }
+    .section-header:hover { background: rgba(255,255,255,.06); }
+    .section-header .icon { font-size: 1.1rem; }
+    .section-header .chevron { margin-left: auto; transition: transform .2s; color: var(--muted); }
+    .section-header.open .chevron { transform: rotate(180deg); }
+    .section-body { padding: 14px 16px; display: none; border-top: 1px solid var(--border); }
+    .section-body.open { display: block; }
+
+    /* ── Endpoint row ─────────────────────────────────────────────── */
+    .endpoint {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+    .endpoint:last-child { border-bottom: none; padding-bottom: 0; }
+    .endpoint-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: .82rem; color: var(--muted);
+    }
+    .method {
+      font-weight: 700; font-size: .72rem; padding: 2px 7px;
+      border-radius: 4px; font-family: monospace;
+    }
+    .GET    { background: #1a3a4a; color: #38bdf8; }
+    .POST   { background: #1a3a1a; color: #4ade80; }
+    .PUT    { background: #3a2e0a; color: #fbbf24; }
+    .DELETE { background: #3a1a1a; color: #f87171; }
+
+    /* ── Inputs ───────────────────────────────────────────────────── */
+    .fields { display: flex; flex-wrap: wrap; gap: 7px; }
+    input, select, textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: .82rem;
+      font-family: inherit;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    input.short  { width: 130px; }
+    input.medium { width: 200px; }
+    input.long   { width: 100%; }
+    textarea { width: 100%; min-height: 70px; resize: vertical; font-family: monospace; font-size: .78rem; }
+    label { font-size: .78rem; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+
+    /* ── Buttons ──────────────────────────────────────────────────── */
+    .btn {
+      padding: 7px 16px; border: none; border-radius: 6px;
+      font-size: .82rem; font-weight: 600; cursor: pointer;
+      transition: opacity .15s; white-space: nowrap;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-get    { background: #0369a1; color: #fff; }
+    .btn-post   { background: #166534; color: #fff; }
+    .btn-put    { background: #92400e; color: #fff; }
+    .btn-delete { background: #991b1b; color: #fff; }
+    .btn-auth   { background: var(--accent); color: #0f172a; }
+    .btn-sm { padding: 5px 12px; font-size: .78rem; }
+
+    /* ── Right panel — результат ─────────────────────────────────── */
+    aside {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      max-height: calc(100vh - 53px);
+      position: sticky;
+      top: 0;
+    }
+    .result-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: .85rem; font-weight: 600;
+    }
+    #last-call { font-family: monospace; font-size: .78rem; color: var(--muted); }
+    #status-pill {
+      padding: 2px 10px; border-radius: 12px; font-size: .78rem; font-weight: 700;
+      background: var(--border); color: var(--muted);
+    }
+    #status-pill.ok  { background: #14532d; color: var(--green); }
+    #status-pill.err { background: #450a0a; color: var(--red); }
+
+    #result-json {
+      flex: 1; overflow-y: auto; padding: 16px;
+      font-family: 'Consolas', 'Cascadia Code', monospace;
+      font-size: .8rem; line-height: 1.7;
+      white-space: pre-wrap; word-break: break-all;
+      color: #a5f3fc;
+    }
+    .json-key    { color: #93c5fd; }
+    .json-str    { color: #86efac; }
+    .json-num    { color: #fca5a5; }
+    .json-bool   { color: #fbbf24; }
+    .json-null   { color: var(--muted); }
+
+    .placeholder {
+      color: var(--muted); font-size: .85rem;
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; text-align: center; padding: 30px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<header>
+  <h1>МедКлиника API <span>http://localhost:8000</span></h1>
+  <div id="auth-status">
+    <span id="token-preview">Не авторизован</span>
+    <span id="auth-badge" class="guest">guest</span>
+    <button class="btn btn-delete btn-sm" onclick="logout()" style="display:none" id="logout-btn">Выйти</button>
+  </div>
+</header>
+
+<!-- ── Left: эндпоинты ─────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- ════════════════════ АВТОРИЗАЦИЯ ════════════════════ -->
+  <div class="section">
+    <div class="section-header open" onclick="toggle(this)">
+      <span class="icon">🔑</span> Авторизация
+      <span class="chevron">▼</span>
+    </div>
+    <div class="section-body open">
+
+      <!-- Регистрация -->
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method POST">POST</span>/auth/register</div>
+        <div class="fields">
+          <label>Имя<input class="medium" id="reg-name" value="Анна Иванова" /></label>
+          <label>Телефон<input class="medium" id="reg-phone" value="+79991112233" /></label>
+          <label>Email<input class="medium" id="reg-email" value="anna@example.com" /></label>
+          <label>Пароль<input class="medium" id="reg-password" value="pass1234" /></label>
+        </div>
+        <button class="btn btn-post" onclick="register()">Зарегистрировать</button>
+      </div>
+
+      <!-- Логин -->
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method POST">POST</span>/auth/login</div>
+        <div class="fields">
+          <label>Телефон<input class="medium" id="login-phone" value="+79161234567" /></label>
+          <label>Пароль<input class="medium" id="login-password" value="user123" /></label>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-post" onclick="login()">Войти как user</button>
+          <button class="btn btn-auth" onclick="loginAdmin()">Войти как admin</button>
+        </div>
+      </div>
+
+      <!-- /me -->
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method GET">GET</span>/auth/me</div>
+        <button class="btn btn-get" onclick="api('GET','/auth/me')">Мой профиль</button>
+      </div>
+
+      <!-- Logout -->
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method POST">POST</span>/auth/logout</div>
+        <button class="btn btn-delete" onclick="logout()">Выйти (отозвать токен)</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════ ПОЛЬЗОВАТЕЛИ ════════════════════ -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)">
+      <span class="icon">👤</span> Пользователи
+      <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method GET">GET</span>/users/ <em style="color:var(--muted);font-size:.75rem">(только admin)</em></div>
+        <button class="btn btn-get" onclick="api('GET','/users/')">Список всех</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method GET">GET</span>/users/{id}</div>
+        <div class="fields">
+          <label>ID пользователя<input class="long" id="user-get-id" placeholder="00000000-0000-0000-0000-000000000002" /></label>
+        </div>
+        <button class="btn btn-get" onclick="api('GET','/users/'+v('user-get-id'))">Получить</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method PUT">PUT</span>/users/{id}</div>
+        <div class="fields">
+          <label>ID<input class="long" id="user-upd-id" placeholder="00000000-0000-0000-0000-000000000002" /></label>
+          <label>Новое имя<input class="medium" id="user-upd-name" placeholder="Новое Имя" /></label>
+          <label>Email<input class="medium" id="user-upd-email" placeholder="new@example.com" /></label>
+          <label>Роль (только admin)<select id="user-upd-role"><option value="">— не менять —</option><option value="user">user</option><option value="admin">admin</option></select></label>
+        </div>
+        <button class="btn btn-put" onclick="updateUser()">Обновить</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method DELETE">DELETE</span>/users/{id} <em style="color:var(--muted);font-size:.75rem">(только admin)</em></div>
+        <div class="fields">
+          <label>ID<input class="long" id="user-del-id" placeholder="uuid..." /></label>
+        </div>
+        <button class="btn btn-delete" onclick="api('DELETE','/users/'+v('user-del-id'))">Удалить</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════ ВРАЧИ ════════════════════ -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)">
+      <span class="icon">🩺</span> Врачи
+      <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method GET">GET</span>/doctors/</div>
+        <button class="btn btn-get" onclick="api('GET','/doctors/')">Список всех врачей</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method GET">GET</span>/doctors/{id}</div>
+        <div class="fields">
+          <label>ID врача<input class="long" id="doc-get-id" value="10000000-0000-0000-0000-000000000001" /></label>
+        </div>
+        <button class="btn btn-get" onclick="api('GET','/doctors/'+v('doc-get-id'))">Получить</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method POST">POST</span>/doctors/ <em style="color:var(--muted);font-size:.75rem">(только admin)</em></div>
+        <div class="fields">
+          <label>Имя<input class="medium" id="doc-name" value="Кузнецов Павел Олегович" /></label>
+          <label>Специальность<input class="medium" id="doc-spec" value="Хирург" /></label>
+          <label>Стаж (лет)<input class="short" id="doc-exp" type="number" value="8" /></label>
+          <label>Образование<input class="medium" id="doc-edu" value="РНИМУ им. Пирогова, 2016" /></label>
+          <label>Описание<input class="long" id="doc-desc" value="Врач-хирург первой категории." /></label>
+        </div>
+        <button class="btn btn-post" onclick="createDoctor()">Создать врача</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method PUT">PUT</span>/doctors/{id} <em style="color:var(--muted);font-size:.75rem">(только admin)</em></div>
+        <div class="fields">
+          <label>ID<input class="long" id="doc-upd-id" value="10000000-0000-0000-0000-000000000001" /></label>
+          <label>Новое имя<input class="medium" id="doc-upd-name" placeholder="(не менять)" /></label>
+          <label>Специальность<input class="medium" id="doc-upd-spec" placeholder="(не менять)" /></label>
+          <label>Активен<select id="doc-upd-active"><option value="">— не менять —</option><option value="true">true</option><option value="false">false</option></select></label>
+        </div>
+        <button class="btn btn-put" onclick="updateDoctor()">Обновить</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method DELETE">DELETE</span>/doctors/{id} <em style="color:var(--muted);font-size:.75rem">(soft delete, только admin)</em></div>
+        <div class="fields">
+          <label>ID<input class="long" id="doc-del-id" value="10000000-0000-0000-0000-000000000001" /></label>
+        </div>
+        <button class="btn btn-delete" onclick="api('DELETE','/doctors/'+v('doc-del-id'))">Деактивировать</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════ УСЛУГИ ════════════════════ -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)">
+      <span class="icon">🏥</span> Услуги
+      <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method GET">GET</span>/services/</div>
+        <div class="fields">
+          <label>Фильтр категории
+            <select id="svc-cat">
+              <option value="">— все —</option>
+              <option value="doctors">doctors</option>
+              <option value="diagnostics">diagnostics</option>
+              <option value="analysis">analysis</option>
+            </select>
+          </label>
+        </div>
+        <button class="btn btn-get" onclick="listServices()">Список услуг</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method GET">GET</span>/services/{id}</div>
+        <div class="fields">
+          <label>ID услуги<input class="long" id="svc-get-id" value="20000000-0000-0000-0000-000000000001" /></label>
+        </div>
+        <button class="btn btn-get" onclick="api('GET','/services/'+v('svc-get-id'))">Получить</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method POST">POST</span>/services/ <em style="color:var(--muted);font-size:.75rem">(только admin)</em></div>
+        <div class="fields">
+          <label>Название<input class="medium" id="svc-name" value="Приём офтальмолога" /></label>
+          <label>Категория<select id="svc-create-cat"><option value="doctors">doctors</option><option value="diagnostics">diagnostics</option><option value="analysis">analysis</option></select></label>
+          <label>Цена ₽<input class="short" id="svc-price" type="number" value="1800" /></label>
+          <label>Длит. (мин)<input class="short" id="svc-dur" type="number" value="30" /></label>
+          <label>Описание<input class="long" id="svc-desc" value="Консультация врача-офтальмолога." /></label>
+          <label>ID врача (опц.)<input class="long" id="svc-docid" placeholder="uuid или пусто" /></label>
+        </div>
+        <button class="btn btn-post" onclick="createService()">Создать услугу</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method PUT">PUT</span>/services/{id} <em style="color:var(--muted);font-size:.75rem">(только admin)</em></div>
+        <div class="fields">
+          <label>ID<input class="long" id="svc-upd-id" value="20000000-0000-0000-0000-000000000001" /></label>
+          <label>Новое название<input class="medium" id="svc-upd-name" placeholder="(не менять)" /></label>
+          <label>Новая цена<input class="short" id="svc-upd-price" type="number" placeholder="0" /></label>
+          <label>Активна<select id="svc-upd-active"><option value="">— не менять —</option><option value="true">true</option><option value="false">false</option></select></label>
+        </div>
+        <button class="btn btn-put" onclick="updateService()">Обновить</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method DELETE">DELETE</span>/services/{id} <em style="color:var(--muted);font-size:.75rem">(soft delete, только admin)</em></div>
+        <div class="fields">
+          <label>ID<input class="long" id="svc-del-id" value="20000000-0000-0000-0000-000000000006" /></label>
+        </div>
+        <button class="btn btn-delete" onclick="api('DELETE','/services/'+v('svc-del-id'))">Деактивировать</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════ ЗАПИСИ ════════════════════ -->
+  <div class="section">
+    <div class="section-header" onclick="toggle(this)">
+      <span class="icon">📅</span> Записи на приём
+      <span class="chevron">▼</span>
+    </div>
+    <div class="section-body">
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method GET">GET</span>/appointments/ <em style="color:var(--muted);font-size:.75rem">(авторизация обязательна)</em></div>
+        <button class="btn btn-get" onclick="api('GET','/appointments/')">Список записей</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method GET">GET</span>/appointments/{id}</div>
+        <div class="fields">
+          <label>ID записи<input class="long" id="appt-get-id" placeholder="uuid..." /></label>
+        </div>
+        <button class="btn btn-get" onclick="api('GET','/appointments/'+v('appt-get-id'))">Получить</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method POST">POST</span>/appointments/ <em style="color:var(--muted);font-size:.75rem">(гость или авторизован)</em></div>
+        <div class="fields">
+          <label>Имя пациента<input class="medium" id="appt-name" value="Иван Иванов" /></label>
+          <label>Телефон пациента<input class="medium" id="appt-phone" value="89031234567" /></label>
+          <label>ID услуги<input class="long" id="appt-svc" value="20000000-0000-0000-0000-000000000001" /></label>
+          <label>ID врача<input class="long" id="appt-doc" value="10000000-0000-0000-0000-000000000001" /></label>
+          <label>Дата<input class="short" id="appt-date" type="date" /></label>
+          <label>Время<input class="short" id="appt-time" value="10:00" /></label>
+        </div>
+        <div style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:.8rem;display:flex;flex-direction:column;gap:6px;margin-top:2px">
+          <div style="color:var(--muted);font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Сценарии</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <button class="btn btn-post" onclick="createAppt(false, true)">👤 Гость — без скидки</button>
+            <button class="btn btn-auth" onclick="createAppt(true, true)">✅ Авторизован — со скидкой −10%</button>
+            <button class="btn btn-put" onclick="createAppt(true, false)">🔄 Авторизован — без скидки</button>
+          </div>
+          <div id="appt-scenario-hint" style="color:var(--muted);font-size:.75rem">
+            Нажми любую кнопку — в ответе сравни <code>base_price</code> и <code>final_price</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method PUT">PUT</span>/appointments/{id}/status <em style="color:var(--muted);font-size:.75rem">(только admin)</em></div>
+        <div class="fields">
+          <label>ID записи<input class="long" id="appt-upd-id" placeholder="uuid..." /></label>
+          <label>Новый статус
+            <select id="appt-upd-status">
+              <option value="pending">pending</option>
+              <option value="confirmed">confirmed</option>
+              <option value="completed">completed</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+          </label>
+        </div>
+        <button class="btn btn-put" onclick="updateApptStatus()">Изменить статус</button>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-title"><span class="method DELETE">DELETE</span>/appointments/{id} <em style="color:var(--muted);font-size:.75rem">(владелец или admin)</em></div>
+        <div class="fields">
+          <label>ID записи<input class="long" id="appt-del-id" placeholder="uuid..." /></label>
+        </div>
+        <button class="btn btn-delete" onclick="api('DELETE','/appointments/'+v('appt-del-id'))">Отменить запись</button>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Right: результат ─────────────────────────────────────────────────────── -->
+<aside>
+  <div class="result-header">
+    <div>
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:2px">Последний запрос</div>
+      <div id="last-call">—</div>
+    </div>
+    <span id="status-pill">—</span>
+  </div>
+  <div id="result-json"><div class="placeholder">Нажми любую кнопку —<br/>ответ API появится здесь</div></div>
+</aside>
+
+<script>
+  const API = 'http://localhost:8000';
+  let token = localStorage.getItem('clinic_token') || '';
+  updateAuthUI();
+
+  // ── Установить дату по умолчанию — завтра
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  document.getElementById('appt-date').value = tomorrow.toISOString().split('T')[0];
+
+  // ── Утилиты ──────────────────────────────────────────────────────
+  function v(id) { return document.getElementById(id).value.trim(); }
+
+  function headers(withToken = true) {
+    const h = { 'Content-Type': 'application/json' };
+    if (withToken && token) h['Authorization'] = `Bearer ${token}`;
+    return h;
+  }
+
+  function updateAuthUI() {
+    const badge = document.getElementById('auth-badge');
+    const preview = document.getElementById('token-preview');
+    const logoutBtn = document.getElementById('logout-btn');
+    if (token) {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      badge.textContent = payload.role || 'user';
+      badge.className = payload.role === 'admin' ? '' : '';
+      badge.style.background = payload.role === 'admin' ? '#1a2a3a' : '#1e3a2a';
+      badge.style.color = payload.role === 'admin' ? '#38bdf8' : '#4ade80';
+      badge.style.borderColor = payload.role === 'admin' ? '#38bdf8' : '#4ade80';
+      preview.textContent = token.substring(0, 30) + '...';
+      logoutBtn.style.display = 'block';
+    } else {
+      badge.textContent = 'guest';
+      badge.className = 'guest';
+      badge.style = '';
+      preview.textContent = 'Не авторизован';
+      logoutBtn.style.display = 'none';
+    }
+  }
+
+  function colorizeJSON(obj) {
+    const str = JSON.stringify(obj, null, 2);
+    return str
+      .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, match => {
+        if (/^"/.test(match)) {
+          if (/:$/.test(match)) return `<span class="json-key">${match}</span>`;
+          return `<span class="json-str">${match}</span>`;
+        }
+        if (/true|false/.test(match)) return `<span class="json-bool">${match}</span>`;
+        if (/null/.test(match))       return `<span class="json-null">${match}</span>`;
+        return `<span class="json-num">${match}</span>`;
+      });
+  }
+
+  function showResult(method, path, status, data) {
+    document.getElementById('last-call').textContent = `${method} ${path}`;
+    const pill = document.getElementById('status-pill');
+    pill.textContent = status;
+    pill.className = (status >= 200 && status < 300) ? 'ok' : 'err';
+    document.getElementById('result-json').innerHTML = colorizeJSON(data);
+  }
+
+  // ── Базовый вызов ────────────────────────────────────────────────
+  async function api(method, path, body = null, withToken = true) {
+    const opts = { method, headers: headers(withToken) };
+    if (body) opts.body = JSON.stringify(body);
+    try {
+      const res = await fetch(API + path, opts);
+      let data;
+      try { data = await res.json(); } catch { data = { raw: await res.text() }; }
+      showResult(method, path, res.status, data);
+      return { status: res.status, data };
+    } catch (e) {
+      showResult(method, path, 'NET', { error: e.message, hint: 'Бэкенд запущен? http://localhost:8000' });
+    }
+  }
+
+  // ── Auth ─────────────────────────────────────────────────────────
+  async function register() {
+    await api('POST', '/auth/register', {
+      name: v('reg-name'), phone: v('reg-phone'),
+      email: v('reg-email') || undefined, password: v('reg-password')
+    });
+  }
+
+  async function loginWith(phone, password) {
+    const r = await api('POST', '/auth/login', { phone, password }, false);
+    if (r && r.status === 200) {
+      token = r.data.access_token;
+      localStorage.setItem('clinic_token', token);
+      updateAuthUI();
+    }
+  }
+  function login()      { loginWith(v('login-phone'), v('login-password')); }
+  function loginAdmin() { loginWith('+79000000000', 'admin123'); }
+
+  async function logout() {
+    await api('POST', '/auth/logout');
+    token = '';
+    localStorage.removeItem('clinic_token');
+    updateAuthUI();
+  }
+
+  // ── Users ────────────────────────────────────────────────────────
+  function updateUser() {
+    const body = {};
+    if (v('user-upd-name'))  body.name  = v('user-upd-name');
+    if (v('user-upd-email')) body.email = v('user-upd-email');
+    const role = document.getElementById('user-upd-role').value;
+    if (role) body.role = role;
+    api('PUT', '/users/' + v('user-upd-id'), body);
+  }
+
+  // ── Doctors ──────────────────────────────────────────────────────
+  function createDoctor() {
+    api('POST', '/doctors/', {
+      name: v('doc-name'), specialty: v('doc-spec'),
+      experience_years: parseInt(v('doc-exp')) || 0,
+      education: v('doc-edu') || undefined,
+      description: v('doc-desc') || undefined,
+    });
+  }
+
+  function updateDoctor() {
+    const body = {};
+    if (v('doc-upd-name')) body.name = v('doc-upd-name');
+    if (v('doc-upd-spec')) body.specialty = v('doc-upd-spec');
+    const active = document.getElementById('doc-upd-active').value;
+    if (active !== '') body.is_active = active === 'true';
+    api('PUT', '/doctors/' + v('doc-upd-id'), body);
+  }
+
+  // ── Services ─────────────────────────────────────────────────────
+  function listServices() {
+    const cat = document.getElementById('svc-cat').value;
+    api('GET', '/services/' + (cat ? '?category=' + cat : ''));
+  }
+
+  function createService() {
+    const docId = v('svc-docid');
+    api('POST', '/services/', {
+      name: v('svc-name'),
+      category: document.getElementById('svc-create-cat').value,
+      price: parseFloat(v('svc-price')),
+      duration_minutes: parseInt(v('svc-dur')),
+      description: v('svc-desc') || undefined,
+      doctor_id: docId || undefined,
+    });
+  }
+
+  function updateService() {
+    const body = {};
+    if (v('svc-upd-name')) body.name = v('svc-upd-name');
+    const price = parseFloat(v('svc-upd-price'));
+    if (price > 0) body.price = price;
+    const active = document.getElementById('svc-upd-active').value;
+    if (active !== '') body.is_active = active === 'true';
+    api('PUT', '/services/' + v('svc-upd-id'), body);
+  }
+
+  // ── Appointments ─────────────────────────────────────────────────
+  function createAppt(useToken, applyDiscount) {
+    const hints = {
+      'false-true':  '👤 Гость: токен не передаётся → скидки нет (apply_discount игнорируется)',
+      'true-true':   '✅ Авторизован + apply_discount=true → скидка −10% применена',
+      'true-false':  '🔄 Авторизован + apply_discount=false → полная цена, скидка отключена',
+    };
+    const key = `${useToken}-${applyDiscount}`;
+    document.getElementById('appt-scenario-hint').textContent = hints[key] || '';
+    api('POST', '/appointments/', {
+      patient_name:     v('appt-name'),
+      patient_phone:    v('appt-phone'),
+      service_id:       v('appt-svc'),
+      doctor_id:        v('appt-doc'),
+      appointment_date: v('appt-date'),
+      appointment_time: v('appt-time'),
+      apply_discount:   applyDiscount,
+    }, useToken);
+  }
+
+  function updateApptStatus() {
+    api('PUT', '/appointments/' + v('appt-upd-id') + '/status', {
+      status: document.getElementById('appt-upd-status').value
+    });
+  }
+
+  // ── Accordion ────────────────────────────────────────────────────
+  function toggle(header) {
+    header.classList.toggle('open');
+    header.nextElementSibling.classList.toggle('open');
+  }
+</script>
+</body>
+</html>
