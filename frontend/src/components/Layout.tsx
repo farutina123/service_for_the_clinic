@@ -1,5 +1,6 @@
-// Shared обёртка: Header (sticky) + <Outlet> (контент страницы) + Footer
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { apiLogout } from '../api'
 
 const NAV_LINKS = [
   { to: '/', label: 'Главная' },
@@ -8,6 +9,15 @@ const NAV_LINKS = [
 ]
 
 export default function Layout() {
+  const { user, isAdmin, logout } = useAuth()
+  const navigate = useNavigate()
+
+  async function handleLogout() {
+    try { await apiLogout() } catch { /* ignore */ }
+    logout()
+    navigate('/')
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
 
@@ -39,15 +49,56 @@ export default function Layout() {
                 {label}
               </NavLink>
             ))}
+            {isAdmin && (
+              <NavLink
+                to="/admin"
+                className={({ isActive }) =>
+                  `text-sm font-medium transition-colors ${
+                    isActive ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
+                  }`
+                }
+              >
+                Панель админа
+              </NavLink>
+            )}
           </nav>
 
-          {/* CTA-кнопка */}
-          <Link
-            to="/booking"
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            Записаться
-          </Link>
+          {/* Правая часть: кнопки авторизации + запись */}
+          <div className="flex items-center gap-2">
+            {user ? (
+              <>
+                <Link
+                  to="/profile"
+                  className="text-sm text-gray-700 font-medium px-3 py-2 rounded-lg
+                             hover:bg-gray-100 transition-colors hidden sm:block"
+                >
+                  {user.name.split(' ')[0]}
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2
+                             rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  Выйти
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="text-sm text-gray-600 hover:text-gray-900 font-medium px-3 py-2
+                           rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Войти
+              </Link>
+            )}
+            <Link
+              to="/booking"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
+                         px-4 py-2 rounded-lg transition-colors"
+            >
+              Записаться
+            </Link>
+          </div>
         </div>
       </header>
 

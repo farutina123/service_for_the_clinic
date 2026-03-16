@@ -149,10 +149,37 @@ export function toLocalAppointment(
   }
 }
 
+// ── Дополнительные типы ────────────────────────────────────────────────────
+
+export interface ApiUser {
+  id: string
+  name: string
+  phone: string
+  email: string | null
+  role: 'user' | 'admin'
+  discount: number        // float от бэкенда: 0.1 = 10%
+  created_at: string
+}
+
+export interface ApiTokenResponse {
+  access_token: string
+  token_type: string
+}
+
 // ── HTTP-обёртка ───────────────────────────────────────────────────────────
 
+function getToken(): string | null {
+  return localStorage.getItem('clinic_token')
+}
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(API_BASE + path, options)
+  const token = getToken()
+  const headers: Record<string, string> = {
+    ...(options?.headers as Record<string, string>),
+  }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(API_BASE + path, { ...options, headers })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const detail = body?.detail
@@ -199,4 +226,159 @@ export async function createAppointment(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+
+export interface ApiLoginResult {
+  token: string
+  user: ApiUser
+}
+
+/**
+ * Регистрация: бэкенд возвращает только UserOut (без токена),
+ * поэтому после регистрации сразу логинимся.
+ */
+export async function apiRegister(data: {
+  name: string
+  phone: string
+  password: string
+  email?: string
+}): Promise<ApiLoginResult> {
+  await apiFetch<ApiUser>('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  return apiLogin({ phone: data.phone, password: data.password })
+}
+
+/**
+ * Логин: бэкенд возвращает только токен,
+ * поэтому после получения токена запрашиваем /auth/me.
+ */
+export async function apiLogin(data: {
+  phone: string
+  password: string
+}): Promise<ApiLoginResult> {
+  const { access_token } = await apiFetch<ApiTokenResponse>('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  // Временно сохраняем токен, чтобы apiFetch мог добавить заголовок для /auth/me
+  localStorage.setItem('clinic_token', access_token)
+  const user = await apiFetch<ApiUser>('/auth/me')
+  return { token: access_token, user }
+}
+
+export async function apiLogout(): Promise<void> {
+  await apiFetch<void>('/auth/logout', { method: 'POST' })
+}
+
+export async function apiMe(): Promise<ApiUser> {
+  return apiFetch<ApiUser>('/auth/me')
+}
+
+// ── Users ──────────────────────────────────────────────────────────────────
+
+export async function fetchUsers(): Promise<ApiUser[]> {
+  return apiFetch<ApiUser[]>('/users/')
+}
+
+export async function fetchUserById(id: string): Promise<ApiUser> {
+  return apiFetch<ApiUser>(`/users/${id}`)
+}
+
+export async function updateUser(id: string, data: {
+  name?: string
+  email?: string
+  role?: string
+}): Promise<ApiUser> {
+  return apiFetch<ApiUser>(`/users/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  await apiFetch<void>(`/users/${id}`, { method: 'DELETE' })
+}
+
+// ── Doctors (admin) ────────────────────────────────────────────────────────
+
+export async function fetchDoctors(): Promise<ApiDoctor[]> {
+  return apiFetch<ApiDoctor[]>('/doctors/')
+}
+
+export async function createDoctor(data: Omit<ApiDoctor, 'id' | 'is_active'>): Promise<ApiDoctor> {
+  return apiFetch<ApiDoctor>('/doctors/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateDoctor(id: string, data: Partial<Omit<ApiDoctor, 'id'>>): Promise<ApiDoctor> {
+  return apiFetch<ApiDoctor>(`/doctors/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteDoctor(id: string): Promise<void> {
+  await apiFetch<void>(`/doctors/${id}`, { method: 'DELETE' })
+}
+
+// ── Services (admin) ───────────────────────────────────────────────────────
+
+export async function fetchAllServices(): Promise<ApiService[]> {
+  return apiFetch<ApiService[]>('/services/')
+}
+
+export async function createService(data: Omit<ApiService, 'id' | 'is_active'>): Promise<ApiService> {
+  return apiFetch<ApiService>('/services/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateService(id: string, data: Partial<Omit<ApiService, 'id'>>): Promise<ApiService> {
+  return apiFetch<ApiService>(`/services/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteService(id: string): Promise<void> {
+  await apiFetch<void>(`/services/${id}`, { method: 'DELETE' })
+}
+
+// ── Appointments ───────────────────────────────────────────────────────────
+
+export async function fetchAppointments(): Promise<ApiAppointment[]> {
+  return apiFetch<ApiAppointment[]>('/appointments/')
+}
+
+export async function fetchAppointmentById(id: string): Promise<ApiAppointment> {
+  return apiFetch<ApiAppointment>(`/appointments/${id}`)
+}
+
+export async function updateAppointmentStatus(
+  id: string,
+  status: ApiAppointment['status'],
+): Promise<ApiAppointment> {
+  return apiFetch<ApiAppointment>(`/appointments/${id}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function cancelAppointmentApi(id: string): Promise<void> {
+  await apiFetch<void>(`/appointments/${id}`, { method: 'DELETE' })
 }

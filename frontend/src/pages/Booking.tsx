@@ -9,6 +9,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchServices, createAppointment, toLocalAppointment } from '../api'
 import { useApi } from '../hooks/useApi'
+import { useAuth } from '../context/AuthContext'
 import {
   generateSchedule,
   saveAppointment,
@@ -48,6 +49,8 @@ function filterPhoneInput(raw: string): string {
 }
 
 export default function Booking() {
+  const { user } = useAuth()
+
   const [step, setStep]                   = useState(1)
   const [form, setForm]                   = useState<FormState>(EMPTY)
   const [schedule]                        = useState<ScheduleDay[]>(generateSchedule)
@@ -60,6 +63,17 @@ export default function Booking() {
 
   const navigate       = useNavigate()
   const [searchParams] = useSearchParams()
+
+  // Если пользователь авторизован — подтягиваем его данные в форму
+  useEffect(() => {
+    if (user) {
+      setForm(prev => ({
+        ...prev,
+        patientName:  user.name,
+        patientPhone: user.phone,
+      }))
+    }
+  }, [user])
 
   // ── Загрузка списка услуг (шаг 1) ──────────────────────────────────────
   const { data, loading: servicesLoading, error: servicesError, retry } = useApi(fetchServices)
@@ -164,8 +178,10 @@ export default function Booking() {
           />
           {STEP_LABELS.map((label, i) => {
             const n = i + 1
-            const done   = n < step
-            const active = n === step
+            // Для авторизованных шаг 3 считается автоматически выполненным
+            const autoFilled = user && n === 3
+            const done   = n < step || autoFilled
+            const active = n === step && !autoFilled
             return (
               <div key={n} className="flex flex-col items-center flex-1 relative z-10">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm
@@ -487,6 +503,13 @@ export default function Booking() {
             ))}
           </div>
 
+          {/* Подсказка для авторизованных */}
+          {user && (
+            <div className="mb-4 bg-green-50 border border-green-100 rounded-xl px-4 py-2.5 text-sm text-green-700">
+              Данные пациента подтянуты из вашего профиля
+            </div>
+          )}
+
           {/* Ошибка отправки */}
           {submitError && (
             <div className="mb-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
@@ -518,14 +541,15 @@ export default function Booking() {
       {step < 4 && (
         <div className="flex gap-3 mt-8">
           {step > 1 && (
-            <button onClick={() => setStep(s => s - 1)}
+            <button
+              onClick={() => setStep(s => (user && s === 4 ? 2 : s - 1))}
               className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-700
                          font-medium hover:bg-gray-50 transition-colors">
               ← Назад
             </button>
           )}
           <button
-            onClick={() => setStep(s => s + 1)}
+            onClick={() => setStep(s => (user && s === 2 ? 4 : s + 1))}
             disabled={!canProceed() || (step === 1 && servicesLoading)}
             className="flex-1 py-3 bg-blue-600 text-white font-medium rounded-xl
                        hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed
