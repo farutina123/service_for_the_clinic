@@ -49,6 +49,7 @@ export default function AdminUsers() {
               <th className="px-4 py-3 text-left">Email</th>
               <th className="px-4 py-3 text-left">Роль</th>
               <th className="px-4 py-3 text-left">Скидка</th>
+              <th className="px-4 py-3 text-left">Статус</th>
               <th className="px-4 py-3 text-left"></th>
             </tr>
           </thead>
@@ -68,7 +69,14 @@ export default function AdminUsers() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-gray-500">
-                  {u.discount_percent > 0 ? `${u.discount_percent}%` : '—'}
+                  {u.discount > 0 ? `${Math.round(u.discount * 100)}%` : '—'}
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    u.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-400'
+                  }`}>
+                    {u.is_active ? 'Активен' : 'Отключён'}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-3">
@@ -110,8 +118,7 @@ export default function AdminUsers() {
                   ['Телефон', detail.phone],
                   ['Email', detail.email ?? '—'],
                   ['Роль', detail.role === 'admin' ? 'Администратор' : 'Пользователь'],
-                  ['Скидка', detail.discount_percent > 0 ? `${detail.discount_percent}%` : '—'],
-                  ['Статус', detail.is_active ? 'Активен' : 'Отключён'],
+                  ['Скидка', detail.discount > 0 ? `${Math.round(detail.discount * 100)}%` : '—'],
                   ['Зарегистрирован', new Date(detail.created_at).toLocaleString('ru-RU')],
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-4">
@@ -119,6 +126,16 @@ export default function AdminUsers() {
                     <dd className="text-gray-900 font-medium text-right break-all">{v}</dd>
                   </div>
                 ))}
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-400">Статус</dt>
+                  <dd>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      detail.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {detail.is_active ? 'Активен' : 'Отключён'}
+                    </span>
+                  </dd>
+                </div>
               </dl>
             )}
           </div>
@@ -129,9 +146,9 @@ export default function AdminUsers() {
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="font-bold text-gray-900 text-lg mb-2">Удалить пользователя?</h3>
+            <h3 className="font-bold text-gray-900 text-lg mb-2">Деактивировать пользователя?</h3>
             <p className="text-gray-500 text-sm mb-6">
-              Пользователь будет удалён. Это действие нельзя отменить.
+              Пользователь будет отключён и не сможет войти в систему. Его данные и записи сохранятся.
             </p>
             <div className="flex gap-3">
               <button
@@ -144,7 +161,7 @@ export default function AdminUsers() {
                 onClick={() => handleDelete(deleteTarget)}
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl transition-colors font-medium"
               >
-                Удалить
+                Деактивировать
               </button>
             </div>
           </div>

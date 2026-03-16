@@ -142,6 +142,7 @@ export default function Booking() {
         doctor_id:        form.selectedService.doctorId ?? null,
         appointment_date: form.selectedDate,
         appointment_time: form.selectedTime,
+        notes:            form.patientComment || null,
       })
 
       // Сохраняем в localStorage для страницы «Мои записи»

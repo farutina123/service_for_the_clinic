@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from database import init_db
 from auth.router import router as auth_router
 from routers.users import router as users_router
 from routers.doctors import router as doctors_router
@@ -50,6 +51,11 @@ app.include_router(users_router, prefix="/users", tags=["Пользовател�
 app.include_router(doctors_router, prefix="/doctors", tags=["Врачи"])
 app.include_router(services_router, prefix="/services", tags=["Услуги"])
 app.include_router(appointments_router, prefix="/appointments", tags=["Записи"])
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

@@ -20,26 +20,23 @@ _security = HTTPBearer(auto_error=False)
     summary="Регистрация нового пользователя",
 )
 def register(data: RegisterRequest):
-    for user in storage.users.values():
-        if user["phone"] == data.phone:
-            raise HTTPException(
-                status_code=400,
-                detail="Пользователь с таким номером телефона уже существует",
-            )
+    if storage.get_user_by_phone(data.phone):
+        raise HTTPException(
+            status_code=400,
+            detail="Пользователь с таким номером телефона уже существует",
+        )
 
-    user_id = str(uuid4())
     user = {
-        "id": user_id,
+        "id": str(uuid4()),
         "name": data.name,
         "phone": data.phone,
         "email": data.email,
         "password_hash": hash_password(data.password),
         "role": "user",
         "discount": 0.1,
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.utcnow().isoformat(),
     }
-    storage.users[user_id] = user
-    return user
+    return storage.create_user(user)
 
 
 @router.post(
@@ -48,9 +45,7 @@ def register(data: RegisterRequest):
     summary="Получить JWT-токен",
 )
 def login(data: LoginRequest):
-    user = next(
-        (u for u in storage.users.values() if u["phone"] == data.phone), None
-    )
+    user = storage.get_user_by_phone(data.phone)
     if not user or not verify_password(data.password, user["password_hash"]):
         raise HTTPException(
             status_code=401,
@@ -68,7 +63,7 @@ def logout(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_security),
 ):
     if credentials:
-        storage.revoked_tokens.add(credentials.credentials)
+        storage.revoke_token(credentials.credentials)
     return {"message": "Успешный выход из системы"}
 
 

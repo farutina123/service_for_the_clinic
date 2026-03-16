@@ -200,7 +200,7 @@ export default function AdminServices() {
                 >
                   <option value="">— Без врача —</option>
                   {doctors.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
+                    <option key={d.id} value={d.id}>{d.name} — {d.specialty}</option>
                   ))}
                 </select>
               </Field>

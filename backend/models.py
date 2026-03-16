@@ -63,6 +63,7 @@ class UserOut(BaseModel):
     email: Optional[str] = None
     role: UserRole
     discount: float
+    is_active: bool
     created_at: datetime
 
 
@@ -159,6 +160,12 @@ class AppointmentCreate(BaseModel):
     appointment_time: str = Field(
         ..., pattern=TIME_PATTERN, examples=["10:00"], description="Формат HH:MM"
     )
+    notes: Optional[str] = Field(
+        None,
+        max_length=500,
+        examples=["Аллергия на пенициллин, прошу учесть"],
+        description="Комментарий пациента к записи (жалобы, пожелания)",
+    )
     apply_discount: bool = Field(
         True,
         description=(
@@ -173,6 +180,12 @@ class AppointmentStatusUpdate(BaseModel):
     status: AppointmentStatus
 
 
+class AppointmentDoctorUpdate(BaseModel):
+    doctor_id: Optional[str] = Field(
+        None, description="ID врача из /doctors или null для снятия привязки"
+    )
+
+
 class AppointmentOut(BaseModel):
     id: str
     patient_name: str
@@ -185,5 +198,6 @@ class AppointmentOut(BaseModel):
     base_price: float
     final_price: float
     discount_applied: float
+    notes: Optional[str] = None
     user_id: Optional[str] = None
     created_at: datetime

@@ -16,10 +16,10 @@ router = APIRouter()
     summary="Список активных услуг (доступно всем). Фильтр: ?category=doctors|diagnostics|analysis",
 )
 def list_services(category: Optional[ServiceCategory] = None):
-    result = [s for s in storage.services.values() if s["is_active"]]
-    if category is not None:
-        result = [s for s in result if s["category"] == category]
-    return result
+    return storage.get_services(
+        active_only=True,
+        category=category.value if category is not None else None,
+    )
 
 
 @router.get(
@@ -28,7 +28,7 @@ def list_services(category: Optional[ServiceCategory] = None):
     summary="Услуга по ID (доступно всем)",
 )
 def get_service(service_id: str):
-    service = storage.services.get(service_id)
+    service = storage.get_service_by_id(service_id)
     if not service:
         raise HTTPException(status_code=404, detail="Услуга не найдена")
     return service
@@ -41,17 +41,14 @@ def get_service(service_id: str):
     summary="Создать услугу (только admin)",
 )
 def create_service(data: ServiceCreate, _admin: dict = Depends(require_admin)):
-    if data.doctor_id and data.doctor_id not in storage.doctors:
+    if data.doctor_id and not storage.get_doctor_by_id(data.doctor_id):
         raise HTTPException(status_code=404, detail="Врач не найден")
 
-    service_id = str(uuid4())
-    service = {
-        "id": service_id,
+    return storage.create_service({
+        "id": str(uuid4()),
         **data.model_dump(),
         "is_active": True,
-    }
-    storage.services[service_id] = service
-    return service
+    })
 
 
 @router.put(
@@ -62,16 +59,15 @@ def create_service(data: ServiceCreate, _admin: dict = Depends(require_admin)):
 def update_service(
     service_id: str, data: ServiceUpdate, _admin: dict = Depends(require_admin)
 ):
-    service = storage.services.get(service_id)
-    if not service:
+    if not storage.get_service_by_id(service_id):
         raise HTTPException(status_code=404, detail="Услуга не найдена")
 
     update_data = data.model_dump(exclude_none=True)
-    if "doctor_id" in update_data and update_data["doctor_id"] not in storage.doctors:
-        raise HTTPException(status_code=404, detail="Врач не найден")
+    if "doctor_id" in update_data and update_data["doctor_id"]:
+        if not storage.get_doctor_by_id(update_data["doctor_id"]):
+            raise HTTPException(status_code=404, detail="Врач не найден")
 
-    service.update(update_data)
-    return service
+    return storage.update_service(service_id, update_data)
 
 
 @router.delete(
@@ -80,8 +76,6 @@ def update_service(
     summary="Деактивировать услугу (только admin, мягкое удаление)",
 )
 def delete_service(service_id: str, _admin: dict = Depends(require_admin)):
-    service = storage.services.get(service_id)
-    if not service:
+    if not storage.get_service_by_id(service_id):
         raise HTTPException(status_code=404, detail="Услуга не найдена")
-    service["is_active"] = False
-    return service
+    return storage.update_service(service_id, {"is_active": False})

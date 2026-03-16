@@ -37,6 +37,7 @@ export interface ApiAppointmentCreate {
   doctor_id?: string | null
   appointment_date: string   // 'YYYY-MM-DD'
   appointment_time: string   // 'HH:MM'
+  notes?: string | null
   apply_discount?: boolean
 }
 
@@ -51,7 +52,8 @@ export interface ApiAppointment {
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed'
   base_price: number
   final_price: number
-  discount_applied: number
+  discount_applied: number   // дробь: 0.10 = 10%
+  notes: string | null
   user_id: string | null
   created_at: string
 }
@@ -157,7 +159,8 @@ export interface ApiUser {
   phone: string
   email: string | null
   role: 'user' | 'admin'
-  discount: number        // float от бэкенда: 0.1 = 10%
+  discount: number        // дробь: 0.1 = 10%
+  is_active: boolean
   created_at: string
 }
 
@@ -381,4 +384,15 @@ export async function updateAppointmentStatus(
 
 export async function cancelAppointmentApi(id: string): Promise<void> {
   await apiFetch<void>(`/appointments/${id}`, { method: 'DELETE' })
+}
+
+export async function updateAppointmentDoctor(
+  id: string,
+  doctorId: string | null,
+): Promise<ApiAppointment> {
+  return apiFetch<ApiAppointment>(`/appointments/${id}/doctor`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ doctor_id: doctorId }),
+  })
 }

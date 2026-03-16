@@ -15,7 +15,7 @@ router = APIRouter()
     summary="Список всех пользователей (только admin)",
 )
 def list_users(_admin: dict = Depends(require_admin)):
-    return list(storage.users.values())
+    return storage.get_users()
 
 
 @router.get(
@@ -26,7 +26,7 @@ def list_users(_admin: dict = Depends(require_admin)):
 def get_user(user_id: str, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "admin" and current_user["id"] != user_id:
         raise HTTPException(status_code=403, detail="Нет доступа к этому профилю")
-    user = storage.users.get(user_id)
+    user = storage.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     return user
@@ -45,25 +45,24 @@ def update_user(
     if current_user["role"] != "admin" and current_user["id"] != user_id:
         raise HTTPException(status_code=403, detail="Нет доступа к этому профилю")
 
-    user = storage.users.get(user_id)
-    if not user:
+    if not storage.get_user_by_id(user_id):
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
+    updates: dict = {}
     if data.name is not None:
-        user["name"] = data.name
+        updates["name"] = data.name
     if data.email is not None:
-        user["email"] = data.email
-
+        updates["email"] = data.email
     if data.role is not None:
         if current_user["role"] != "admin":
             raise HTTPException(
                 status_code=403,
                 detail="Только администратор может изменять роль пользователя",
             )
-        user["role"] = data.role
-        user["discount"] = 0.1 if data.role == UserRole.user else 0.0
+        updates["role"] = data.role
+        updates["discount"] = 0.1 if data.role == UserRole.user else 0.0
 
-    return user
+    return storage.update_user(user_id, updates)
 
 
 @router.delete(
@@ -72,6 +71,5 @@ def update_user(
     summary="Удалить пользователя (только admin)",
 )
 def delete_user(user_id: str, _admin: dict = Depends(require_admin)):
-    if user_id not in storage.users:
+    if not storage.delete_user(user_id):
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    del storage.users[user_id]

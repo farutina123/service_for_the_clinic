@@ -20,14 +20,14 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = credentials.credentials
-    if token in storage.revoked_tokens:
+    if storage.is_token_revoked(token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Токен отозван. Выполните вход заново",
         )
     payload = decode_token(token)
     user_id = payload.get("sub")
-    user = storage.users.get(user_id)
+    user = storage.get_user_by_id(user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -43,12 +43,12 @@ def optional_user(
     if not credentials:
         return None
     token = credentials.credentials
-    if token in storage.revoked_tokens:
+    if storage.is_token_revoked(token):
         return None
     try:
         payload = decode_token(token)
         user_id = payload.get("sub")
-        return storage.users.get(user_id)
+        return storage.get_user_by_id(user_id)
     except Exception:
         return None
 

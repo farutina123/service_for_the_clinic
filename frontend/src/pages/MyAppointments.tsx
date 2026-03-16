@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { getAppointments, cancelAppointment, type Appointment } from '../data/mockData'
-import { fetchAppointments, cancelAppointmentApi, type ApiAppointment } from '../api'
+import { fetchAppointments, fetchAllServices, cancelAppointmentApi, type ApiAppointment, type ApiService } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -24,6 +24,7 @@ export default function MyAppointments() {
   // Режим API (авторизован) или localStorage (гость)
   const [apiAppointments, setApiAppointments] = useState<ApiAppointment[]>([])
   const [localAppointments, setLocalAppointments] = useState<Appointment[]>([])
+  const [serviceMap, setServiceMap] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(false)
   const [cancelTarget, setCancelTarget] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
@@ -31,8 +32,12 @@ export default function MyAppointments() {
   const loadApiAppointments = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await fetchAppointments()
+      const [data, svcs] = await Promise.all([
+        fetchAppointments(),
+        fetchAllServices(),
+      ])
       setApiAppointments(data)
+      setServiceMap(new Map((svcs as ApiService[]).map(s => [s.id, s.name])))
     } catch {
       // fallback to empty
     } finally {
@@ -81,7 +86,7 @@ export default function MyAppointments() {
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-1">
               <h3 className="font-semibold text-gray-900 text-sm leading-snug">
-                Запись #{apt.id.slice(0, 8)}
+                {serviceMap.get(apt.service_id) ?? `Запись #${apt.id.slice(0, 8)}`}
               </h3>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
                 {badge.label}
@@ -93,6 +98,9 @@ export default function MyAppointments() {
               <span>🕐 {apt.appointment_time}</span>
               <span>💳 {apt.final_price.toLocaleString('ru-RU')} ₽</span>
             </div>
+            {apt.notes && (
+              <p className="text-xs text-gray-400 mt-2 italic">{apt.notes}</p>
+            )}
           </div>
           {canCancel && (
             <button

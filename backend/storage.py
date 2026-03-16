@@ -1,175 +1,297 @@
 """
-In-memory хранилище данных.
-При перезапуске сервера данные сбрасываются, seed-данные восстанавливаются.
+Слой доступа к данным поверх SQLite.
+Все функции возвращают dict, совместимые с Pydantic-моделями API.
 """
-from typing import Dict, Set
+from typing import Optional
 from datetime import datetime
-from passlib.context import CryptContext
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# ── Хранилища ──────────────────────────────────────────────────────────────────
-users: Dict[str, dict] = {}
-doctors: Dict[str, dict] = {}
-services: Dict[str, dict] = {}
-appointments: Dict[str, dict] = {}
-revoked_tokens: Set[str] = set()
+from database import (
+    get_db,
+    APPOINTMENT_STATUS_BY_ID,
+    APPOINTMENT_STATUS_BY_NAME,
+    DOCTOR_ACTIVE_STATUS_ID,
+    DOCTOR_INACTIVE_STATUS_ID,
+)
 
 
-# ── Seed-данные ────────────────────────────────────────────────────────────────
-def _seed() -> None:
-    # Администратор
-    admin_id = "00000000-0000-0000-0000-000000000001"
-    users[admin_id] = {
-        "id": admin_id,
-        "name": "Администратор",
-        "phone": "+79000000000",
-        "email": "admin@medklinika.ru",
-        "password_hash": pwd_context.hash("admin123"),
-        "role": "admin",
-        "discount": 0.0,
-        "created_at": datetime.utcnow(),
-    }
+# ── Преобразование строк БД → dict для API ───────────────────────────────────
 
-    # Тестовый пользователь
-    user_id = "00000000-0000-0000-0000-000000000002"
-    users[user_id] = {
-        "id": user_id,
-        "name": "Тестовый Пользователь",
-        "phone": "+79161234567",
-        "email": "user@example.com",
-        "password_hash": pwd_context.hash("user123"),
-        "role": "user",
-        "discount": 0.1,
-        "created_at": datetime.utcnow(),
-    }
-
-    # Врачи (из mockData.ts)
-    doc1 = "10000000-0000-0000-0000-000000000001"
-    doc2 = "10000000-0000-0000-0000-000000000002"
-    doc3 = "10000000-0000-0000-0000-000000000003"
-
-    doctors[doc1] = {
-        "id": doc1,
-        "name": "Иванов Алексей Петрович",
-        "specialty": "Терапевт",
-        "experience_years": 15,
-        "education": "Первый МГМУ им. Сеченова, 2009",
-        "description": (
-            "Врач-терапевт первой категории. Специализируется на диагностике "
-            "и лечении заболеваний внутренних органов, профилактических "
-            "осмотрах, диспансеризации."
-        ),
-        "photo_url": None,
-        "is_active": True,
-    }
-    doctors[doc2] = {
-        "id": doc2,
-        "name": "Смирнова Елена Викторовна",
-        "specialty": "Кардиолог",
-        "experience_years": 20,
-        "education": "РНИМУ им. Пирогова, 2004",
-        "description": (
-            "Врач-кардиолог высшей категории, кандидат медицинских наук. "
-            "Специализируется на диагностике и лечении заболеваний "
-            "сердечно-сосудистой системы, интерпретации ЭКГ и ЭхоКГ."
-        ),
-        "photo_url": None,
-        "is_active": True,
-    }
-    doctors[doc3] = {
-        "id": doc3,
-        "name": "Петрова Наталья Сергеевна",
-        "specialty": "Невролог",
-        "experience_years": 12,
-        "education": "СПбГМУ им. Павлова, 2012",
-        "description": (
-            "Врач-невролог. Специализируется на лечении головных болей, "
-            "мигрени, остеохондроза, нарушений сна и функциональных "
-            "расстройств нервной системы."
-        ),
-        "photo_url": None,
-        "is_active": True,
-    }
-
-    # Услуги (из mockData.ts)
-    svc1 = "20000000-0000-0000-0000-000000000001"
-    svc2 = "20000000-0000-0000-0000-000000000002"
-    svc3 = "20000000-0000-0000-0000-000000000003"
-    svc4 = "20000000-0000-0000-0000-000000000004"
-    svc5 = "20000000-0000-0000-0000-000000000005"
-    svc6 = "20000000-0000-0000-0000-000000000006"
-
-    services[svc1] = {
-        "id": svc1,
-        "name": "Приём терапевта",
-        "category": "doctors",
-        "price": 1500.0,
-        "duration_minutes": 30,
-        "description": "Первичный и повторный приём врача-терапевта первой категории.",
-        "doctor_id": doc1,
-        "is_active": True,
-    }
-    services[svc2] = {
-        "id": svc2,
-        "name": "Приём кардиолога",
-        "category": "doctors",
-        "price": 2200.0,
-        "duration_minutes": 45,
-        "description": "Консультация кардиолога высшей категории, к.м.н.",
-        "doctor_id": doc2,
-        "is_active": True,
-    }
-    services[svc3] = {
-        "id": svc3,
-        "name": "Приём невролога",
-        "category": "doctors",
-        "price": 2000.0,
-        "duration_minutes": 40,
-        "description": "Консультация врача-невролога.",
-        "doctor_id": doc3,
-        "is_active": True,
-    }
-    services[svc4] = {
-        "id": svc4,
-        "name": "УЗИ брюшной полости",
-        "category": "diagnostics",
-        "price": 2500.0,
-        "duration_minutes": 30,
-        "description": (
-            "Ультразвуковое исследование органов брюшной полости: печень, "
-            "желчный пузырь, поджелудочная железа, почки, селезёнка. "
-            "Результат выдаётся в тот же день."
-        ),
-        "doctor_id": None,
-        "is_active": True,
-    }
-    services[svc5] = {
-        "id": svc5,
-        "name": "ЭКГ с расшифровкой",
-        "category": "diagnostics",
-        "price": 900.0,
-        "duration_minutes": 20,
-        "description": (
-            "Электрокардиография в покое с расшифровкой результатов "
-            "врачом-кардиологом. Заключение выдаётся сразу."
-        ),
-        "doctor_id": None,
-        "is_active": True,
-    }
-    services[svc6] = {
-        "id": svc6,
-        "name": "Общий анализ крови",
-        "category": "analysis",
-        "price": 450.0,
-        "duration_minutes": 15,
-        "description": (
-            "Клинический анализ крови с лейкоцитарной формулой и СОЭ. "
-            "Результат готов на следующий рабочий день."
-        ),
-        "doctor_id": None,
-        "is_active": True,
-    }
+def _doctor_row(row) -> dict:
+    d = dict(row)
+    d["is_active"] = d.pop("status_id") == DOCTOR_ACTIVE_STATUS_ID
+    return d
 
 
-_seed()
+def _service_row(row) -> dict:
+    d = dict(row)
+    d["is_active"] = bool(d["is_active"])
+    return d
+
+
+def _appointment_row(row) -> dict:
+    d = dict(row)
+    status_id = d.pop("status_id")
+    d["status"] = APPOINTMENT_STATUS_BY_ID.get(status_id, "pending")
+    return d
+
+
+# ── Users ────────────────────────────────────────────────────────────────────
+
+def get_users() -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM users WHERE is_active = 1 ORDER BY created_at"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_user_by_id(user_id: str) -> Optional[dict]:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE id = ? AND is_active = 1", (user_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_user_by_phone(phone: str) -> Optional[dict]:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE phone = ? AND is_active = 1", (phone,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def create_user(data: dict) -> dict:
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO users
+               (id, name, phone, email, password_hash, role, discount, is_active, created_at)
+               VALUES (:id, :name, :phone, :email, :password_hash, :role, :discount, 1, :created_at)""",
+            data,
+        )
+    return get_user_by_id(data["id"])
+
+
+def update_user(user_id: str, updates: dict) -> Optional[dict]:
+    if not updates:
+        return get_user_by_id(user_id)
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    params = {**updates, "_id": user_id}
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE users SET {set_clause} WHERE id = :_id", params
+        )
+    return get_user_by_id(user_id)
+
+
+def delete_user(user_id: str) -> bool:
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE users SET is_active = 0 WHERE id = ? AND is_active = 1",
+            (user_id,),
+        )
+        return cur.rowcount > 0
+
+
+# ── Doctors ──────────────────────────────────────────────────────────────────
+
+def get_doctors(active_only: bool = True) -> list[dict]:
+    with get_db() as conn:
+        if active_only:
+            rows = conn.execute(
+                "SELECT * FROM doctors WHERE status_id = ?",
+                (DOCTOR_ACTIVE_STATUS_ID,),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM doctors").fetchall()
+        return [_doctor_row(r) for r in rows]
+
+
+def get_doctor_by_id(doctor_id: str) -> Optional[dict]:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM doctors WHERE id = ?", (doctor_id,)
+        ).fetchone()
+        return _doctor_row(row) if row else None
+
+
+def create_doctor(data: dict) -> dict:
+    db = {**data}
+    is_active = db.pop("is_active", True)
+    db["status_id"] = DOCTOR_ACTIVE_STATUS_ID if is_active else DOCTOR_INACTIVE_STATUS_ID
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO doctors
+               (id, name, specialty, experience_years, education, description, photo_url, status_id)
+               VALUES (:id, :name, :specialty, :experience_years, :education, :description, :photo_url, :status_id)""",
+            db,
+        )
+    return get_doctor_by_id(data["id"])
+
+
+def update_doctor(doctor_id: str, updates: dict) -> Optional[dict]:
+    db = {**updates}
+    if "is_active" in db:
+        is_active = db.pop("is_active")
+        db["status_id"] = (
+            DOCTOR_ACTIVE_STATUS_ID if is_active else DOCTOR_INACTIVE_STATUS_ID
+        )
+    if not db:
+        return get_doctor_by_id(doctor_id)
+    set_clause = ", ".join(f"{k} = :{k}" for k in db)
+    db["_id"] = doctor_id
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE doctors SET {set_clause} WHERE id = :_id", db
+        )
+    return get_doctor_by_id(doctor_id)
+
+
+# ── Services ─────────────────────────────────────────────────────────────────
+
+def get_services(
+    active_only: bool = True, category: Optional[str] = None
+) -> list[dict]:
+    sql = "SELECT * FROM services WHERE 1=1"
+    params: list = []
+    if active_only:
+        sql += " AND is_active = 1"
+    if category is not None:
+        sql += " AND category = ?"
+        params.append(category)
+    with get_db() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        return [_service_row(r) for r in rows]
+
+
+def get_service_by_id(service_id: str) -> Optional[dict]:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM services WHERE id = ?", (service_id,)
+        ).fetchone()
+        return _service_row(row) if row else None
+
+
+def create_service(data: dict) -> dict:
+    db = {**data}
+    db["is_active"] = 1 if db.get("is_active", True) else 0
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO services
+               (id, name, category, price, duration_minutes, description, doctor_id, is_active)
+               VALUES (:id, :name, :category, :price, :duration_minutes, :description, :doctor_id, :is_active)""",
+            db,
+        )
+    return get_service_by_id(data["id"])
+
+
+def update_service(service_id: str, updates: dict) -> Optional[dict]:
+    db = {**updates}
+    if "is_active" in db:
+        db["is_active"] = 1 if db["is_active"] else 0
+    if not db:
+        return get_service_by_id(service_id)
+    set_clause = ", ".join(f"{k} = :{k}" for k in db)
+    db["_id"] = service_id
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE services SET {set_clause} WHERE id = :_id", db
+        )
+    return get_service_by_id(service_id)
+
+
+# ── Appointments ─────────────────────────────────────────────────────────────
+
+def get_appointments(user_id: Optional[str] = None) -> list[dict]:
+    with get_db() as conn:
+        if user_id:
+            rows = conn.execute(
+                "SELECT * FROM appointments WHERE user_id = ? ORDER BY created_at DESC",
+                (user_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM appointments ORDER BY created_at DESC"
+            ).fetchall()
+        return [_appointment_row(r) for r in rows]
+
+
+def get_appointment_by_id(appointment_id: str) -> Optional[dict]:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM appointments WHERE id = ?", (appointment_id,)
+        ).fetchone()
+        return _appointment_row(row) if row else None
+
+
+def create_appointment(data: dict) -> dict:
+    db = {**data}
+    status_str = db.pop("status", "pending")
+    db["status_id"] = APPOINTMENT_STATUS_BY_NAME.get(status_str, 1)
+    # SQLite принимает date/datetime напрямую, но храним как строки для надёжности
+    if hasattr(db.get("appointment_date"), "isoformat"):
+        db["appointment_date"] = db["appointment_date"].isoformat()
+    if hasattr(db.get("created_at"), "isoformat"):
+        db["created_at"] = db["created_at"].isoformat()
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO appointments
+               (id, user_id, patient_name, patient_phone, service_id, doctor_id,
+                appointment_date, appointment_time, status_id,
+                base_price, discount_applied, final_price, notes, created_at)
+               VALUES
+               (:id, :user_id, :patient_name, :patient_phone, :service_id, :doctor_id,
+                :appointment_date, :appointment_time, :status_id,
+                :base_price, :discount_applied, :final_price, :notes, :created_at)""",
+            db,
+        )
+    return get_appointment_by_id(data["id"])
+
+
+def update_appointment_doctor(appointment_id: str, doctor_id: Optional[str]) -> Optional[dict]:
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE appointments SET doctor_id = ? WHERE id = ?",
+            (doctor_id, appointment_id),
+        )
+    return get_appointment_by_id(appointment_id)
+
+
+def update_appointment_status(appointment_id: str, status_str: str) -> Optional[dict]:
+    status_id = APPOINTMENT_STATUS_BY_NAME.get(status_str, 1)
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE appointments SET status_id = ? WHERE id = ?",
+            (status_id, appointment_id),
+        )
+    return get_appointment_by_id(appointment_id)
+
+
+def get_occupied_slots(doctor_id: str, date_str: str) -> list[str]:
+    """Возвращает занятые слоты врача на дату (не отменённые записи)."""
+    cancelled_id = APPOINTMENT_STATUS_BY_NAME["cancelled"]
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT appointment_time FROM appointments
+               WHERE doctor_id = ? AND appointment_date = ? AND status_id != ?""",
+            (doctor_id, date_str, cancelled_id),
+        ).fetchall()
+        return [r["appointment_time"] for r in rows]
+
+
+# ── Revoked tokens ───────────────────────────────────────────────────────────
+
+def is_token_revoked(token: str) -> bool:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM revoked_tokens WHERE token = ?", (token,)
+        ).fetchone()
+        return row is not None
+
+
+def revoke_token(token: str) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO revoked_tokens (token, revoked_at) VALUES (?, ?)",
+            (token, datetime.utcnow().isoformat()),
+        )

@@ -17,7 +17,7 @@ router = APIRouter()
     summary="Список активных врачей (доступно всем)",
 )
 def list_doctors():
-    return [d for d in storage.doctors.values() if d["is_active"]]
+    return storage.get_doctors(active_only=True)
 
 
 @router.get(
@@ -28,18 +28,11 @@ def get_occupied_slots(
     doctor_id: str,
     date: DateType = Query(..., description="Дата в формате YYYY-MM-DD"),
 ):
-    doctor = storage.doctors.get(doctor_id)
+    doctor = storage.get_doctor_by_id(doctor_id)
     if not doctor or not doctor["is_active"]:
         raise HTTPException(status_code=404, detail="Врач не найден")
 
-    occupied = list({
-        a["appointment_time"]
-        for a in storage.appointments.values()
-        if a["doctor_id"] == doctor_id
-        and str(a["appointment_date"]) == str(date)
-        and a["status"] != "cancelled"
-    })
-
+    occupied = storage.get_occupied_slots(doctor_id, str(date))
     return {"doctor_id": doctor_id, "date": str(date), "occupied": occupied}
 
 
@@ -49,7 +42,7 @@ def get_occupied_slots(
     summary="Врач по ID (доступно всем)",
 )
 def get_doctor(doctor_id: str):
-    doctor = storage.doctors.get(doctor_id)
+    doctor = storage.get_doctor_by_id(doctor_id)
     if not doctor:
         raise HTTPException(status_code=404, detail="Врач не найден")
     return doctor
@@ -62,14 +55,11 @@ def get_doctor(doctor_id: str):
     summary="Создать врача (только admin)",
 )
 def create_doctor(data: DoctorCreate, _admin: dict = Depends(require_admin)):
-    doctor_id = str(uuid4())
-    doctor = {
-        "id": doctor_id,
+    return storage.create_doctor({
+        "id": str(uuid4()),
         **data.model_dump(),
         "is_active": True,
-    }
-    storage.doctors[doctor_id] = doctor
-    return doctor
+    })
 
 
 @router.put(
@@ -80,11 +70,9 @@ def create_doctor(data: DoctorCreate, _admin: dict = Depends(require_admin)):
 def update_doctor(
     doctor_id: str, data: DoctorUpdate, _admin: dict = Depends(require_admin)
 ):
-    doctor = storage.doctors.get(doctor_id)
-    if not doctor:
+    if not storage.get_doctor_by_id(doctor_id):
         raise HTTPException(status_code=404, detail="Врач не найден")
-    doctor.update({k: v for k, v in data.model_dump(exclude_none=True).items()})
-    return doctor
+    return storage.update_doctor(doctor_id, data.model_dump(exclude_none=True))
 
 
 @router.delete(
@@ -93,8 +81,6 @@ def update_doctor(
     summary="Деактивировать врача (только admin, мягкое удаление)",
 )
 def delete_doctor(doctor_id: str, _admin: dict = Depends(require_admin)):
-    doctor = storage.doctors.get(doctor_id)
-    if not doctor:
+    if not storage.get_doctor_by_id(doctor_id):
         raise HTTPException(status_code=404, detail="Врач не найден")
-    doctor["is_active"] = False
-    return doctor
+    return storage.update_doctor(doctor_id, {"is_active": False})
