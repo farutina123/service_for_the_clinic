@@ -1,7 +1,8 @@
 from typing import List
 from uuid import uuid4
+from datetime import date as DateType
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 
 from models import DoctorOut, DoctorCreate, DoctorUpdate
 from dependencies import require_admin
@@ -17,6 +18,29 @@ router = APIRouter()
 )
 def list_doctors():
     return [d for d in storage.doctors.values() if d["is_active"]]
+
+
+@router.get(
+    "/{doctor_id}/slots",
+    summary="Занятые временные слоты врача на дату (доступно всем)",
+)
+def get_occupied_slots(
+    doctor_id: str,
+    date: DateType = Query(..., description="Дата в формате YYYY-MM-DD"),
+):
+    doctor = storage.doctors.get(doctor_id)
+    if not doctor or not doctor["is_active"]:
+        raise HTTPException(status_code=404, detail="Врач не найден")
+
+    occupied = list({
+        a["appointment_time"]
+        for a in storage.appointments.values()
+        if a["doctor_id"] == doctor_id
+        and str(a["appointment_date"]) == str(date)
+        and a["status"] != "cancelled"
+    })
+
+    return {"doctor_id": doctor_id, "date": str(date), "occupied": occupied}
 
 
 @router.get(

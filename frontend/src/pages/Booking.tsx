@@ -5,7 +5,7 @@
  * 3. Данные пациента
  * 4. Сводка + подтверждение — POST к API, сохранение в localStorage
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchServices, createAppointment, toLocalAppointment } from '../api'
 import { useApi } from '../hooks/useApi'
@@ -54,6 +54,8 @@ export default function Booking() {
   const [phoneTouched, setPhoneTouched]   = useState(false)
   const [submitting, setSubmitting]       = useState(false)
   const [submitError, setSubmitError]     = useState<string | null>(null)
+  const [occupiedSlots, setOccupiedSlots] = useState<string[]>([])
+  const [slotsLoading, setSlotsLoading]   = useState(false)
   const preSelectedRef                    = useRef(false)
 
   const navigate       = useNavigate()
@@ -77,6 +79,31 @@ export default function Booking() {
       setStep(2)
     }
   }, [services, searchParams])
+
+  // Загружаем занятые слоты из API когда выбраны дата + услуга с врачом
+  const fetchOccupied = useCallback(async (doctorId: string, date: string) => {
+    setSlotsLoading(true)
+    try {
+      const res = await fetch(`/api/doctors/${doctorId}/slots?date=${date}`)
+      if (res.ok) {
+        const data = await res.json()
+        setOccupiedSlots(data.occupied ?? [])
+      }
+    } catch {
+      // сетевая ошибка — оставляем слоты как есть
+    } finally {
+      setSlotsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (form.selectedDate && form.selectedService?.doctorId) {
+      setOccupiedSlots([])
+      fetchOccupied(form.selectedService.doctorId, form.selectedDate)
+    } else {
+      setOccupiedSlots([])
+    }
+  }, [form.selectedDate, form.selectedService?.doctorId, fetchOccupied])
 
   const daySchedule = schedule.find(d => d.date === form.selectedDate)
 
@@ -168,19 +195,12 @@ export default function Booking() {
 
           {/* Загрузка */}
           {servicesLoading && (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-4 p-4 rounded-xl border-2
-                                        border-gray-100 animate-pulse">
-                  <div className="w-12 h-12 rounded-xl bg-gray-200 flex-shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-gray-200 rounded w-3/4" />
-                    <div className="h-3 bg-gray-200 rounded w-1/3" />
-                  </div>
-                  <div className="space-y-1 text-right">
-                    <div className="h-3 bg-gray-200 rounded w-16" />
-                    <div className="h-3 bg-gray-200 rounded w-10" />
-                  </div>
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between px-4 py-3
+                                        rounded-xl border-2 border-gray-100 animate-pulse">
+                  <div className="h-3 bg-gray-200 rounded w-2/5" />
+                  <div className="h-3 bg-gray-200 rounded w-16" />
                 </div>
               ))}
             </div>
@@ -210,41 +230,39 @@ export default function Booking() {
             </div>
           )}
 
-          {/* Список */}
+          {/* Список — компактный: название + цена */}
           {!servicesLoading && !servicesError && services.length > 0 && (
-            <div className="space-y-3">
-              {services.map(service => (
-                <button
-                  key={service.id}
-                  onClick={() => update('selectedService', service)}
-                  className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left
-                              transition-all ${
-                    form.selectedService?.id === service.id
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'
-                  }`}
-                >
-                  <div className={`w-12 h-12 rounded-xl ${service.color} flex items-center
-                                  justify-center flex-shrink-0`}>
-                    <span className="text-white font-semibold text-xs leading-tight text-center">
-                      {service.initials}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 text-sm">{service.name}</p>
-                    <p className="text-gray-400 text-xs mt-0.5">{service.specialty}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-blue-600 font-bold text-sm">
-                      {service.price.toLocaleString('ru-RU')} ₽
-                    </p>
-                    <p className="text-gray-400 text-xs">{service.duration} мин</p>
-                  </div>
-                  {form.selectedService?.id === service.id && (
-                    <span className="text-blue-600 text-lg ml-1">✓</span>
-                  )}
-                </button>
-              ))}
+            <div className="space-y-2">
+              {services.map(service => {
+                const selected = form.selectedService?.id === service.id
+                return (
+                  <button
+                    key={service.id}
+                    onClick={() => update('selectedService', service)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl
+                                border-2 text-left transition-all ${
+                      selected
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-100 bg-white hover:border-gray-200'
+                    }`}
+                  >
+                    <div className="min-w-0 mr-4">
+                      <p className={`text-sm font-medium leading-snug ${
+                        selected ? 'text-blue-700' : 'text-gray-900'
+                      }`}>
+                        {service.name}
+                      </p>
+                      <p className="text-gray-400 text-xs mt-0.5">{service.duration} мин</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-blue-600 font-bold text-sm">
+                        {service.price.toLocaleString('ru-RU')} ₽
+                      </span>
+                      {selected && <span className="text-blue-600 text-base">✓</span>}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
@@ -284,35 +302,52 @@ export default function Booking() {
           </div>
 
           {form.selectedDate && daySchedule ? (
-            daySchedule.slots.every(s => !s.available) ? (
-              <div className="text-center py-10 text-gray-400">
-                <div className="text-4xl mb-3">😔</div>
-                <p className="font-medium text-gray-500">На этот день нет свободного времени</p>
-                <p className="text-sm mt-1">Выберите другую дату</p>
-              </div>
-            ) : (
-              <div>
-                <p className="text-sm font-medium text-gray-700 mb-3">Доступное время</p>
-                <div className="grid grid-cols-4 gap-2">
-                  {daySchedule.slots.map(slot => (
-                    <button
-                      key={slot.time}
-                      disabled={!slot.available}
-                      onClick={() => update('selectedTime', slot.time)}
-                      className={`py-2.5 rounded-lg text-sm font-medium transition-all ${
-                        !slot.available
-                          ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                          : form.selectedTime === slot.time
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-400'
-                      }`}
-                    >
-                      {slot.time}
-                    </button>
-                  ))}
+            (() => {
+              const slots = daySchedule.slots.map(s => ({
+                ...s,
+                available: s.available && !occupiedSlots.includes(s.time),
+              }))
+              const hasAvailable = slots.some(s => s.available)
+
+              return hasAvailable ? (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-700">Доступное время</p>
+                    {slotsLoading && (
+                      <span className="flex items-center gap-1.5 text-xs text-gray-400">
+                        <span className="w-3 h-3 border border-gray-400 border-t-transparent
+                                        rounded-full animate-spin inline-block" />
+                        Проверяем занятость...
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {slots.map(slot => (
+                      <button
+                        key={slot.time}
+                        disabled={!slot.available}
+                        onClick={() => update('selectedTime', slot.time)}
+                        className={`py-2.5 rounded-lg text-sm font-medium transition-all ${
+                          !slot.available
+                            ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                            : form.selectedTime === slot.time
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:border-blue-400'
+                        }`}
+                      >
+                        {slot.time}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )
+              ) : (
+                <div className="text-center py-10 text-gray-400">
+                  <div className="text-4xl mb-3">😔</div>
+                  <p className="font-medium text-gray-500">На этот день нет свободного времени</p>
+                  <p className="text-sm mt-1">Выберите другую дату</p>
+                </div>
+              )
+            })()
           ) : (
             <p className="text-gray-400 text-sm text-center py-8">
               ← Выберите дату, чтобы увидеть доступное время

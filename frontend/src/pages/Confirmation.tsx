@@ -83,31 +83,6 @@ export default function Confirmation() {
         ))}
       </div>
 
-      {/* ─── Блок Telegram ─── */}
-      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-6">
-        <div className="flex items-start gap-3">
-          <span className="text-2xl mt-0.5">✈️</span>
-          <div>
-            <p className="font-semibold text-gray-900 mb-1">Напоминание в Telegram</p>
-            <p className="text-gray-600 text-sm mb-3 leading-relaxed">
-              Мы отправим напоминание о записи за 24 часа до приёма через Telegram-бот.
-              {appointment.patientTelegram && (
-                <> Уведомление придёт на <strong>{appointment.patientTelegram}</strong>.</>
-              )}
-            </p>
-            <a
-              href="https://t.me/medklinika_bot"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-block bg-blue-600 text-white text-sm font-medium px-5 py-2
-                         rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Открыть Telegram-бот
-            </a>
-          </div>
-        </div>
-      </div>
-
       {/* ─── Кнопки навигации ─── */}
       <div className="flex flex-col gap-3">
         <Link
