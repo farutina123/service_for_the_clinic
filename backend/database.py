@@ -1,13 +1,11 @@
 """
 SQLite — инициализация БД, создание таблиц, начальные данные.
 """
-import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from passlib.context import CryptContext
-
-DB_PATH: str = os.getenv("DB_PATH", "clinic.db")
+from config import DB_PATH
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

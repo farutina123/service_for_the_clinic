@@ -283,6 +283,17 @@ export async function apiMe(): Promise<ApiUser> {
   return apiFetch<ApiUser>('/auth/me')
 }
 
+export async function apiChangePassword(data: {
+  old_password: string
+  new_password: string
+}): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>('/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
 // ── Users ──────────────────────────────────────────────────────────────────
 
 export async function fetchUsers(): Promise<ApiUser[]> {

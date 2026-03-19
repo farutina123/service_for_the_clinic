@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { updateUser } from '../api'
+import { updateUser, apiChangePassword } from '../api'
 
 export default function Profile() {
   const { user, login, token } = useAuth()
@@ -10,6 +10,13 @@ export default function Profile() {
   const [saving,  setSaving]  = useState(false)
   const [success, setSuccess] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
+
+  const [oldPassword, setOldPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newPassword2, setNewPassword2] = useState('')
+  const [pwdSaving, setPwdSaving] = useState(false)
+  const [pwdSuccess, setPwdSuccess] = useState(false)
+  const [pwdError, setPwdError] = useState<string | null>(null)
 
   if (!user) return null
 
@@ -36,10 +43,37 @@ export default function Profile() {
     }
   }
 
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault()
+    setPwdError(null)
+    setPwdSuccess(false)
+
+    if (newPassword !== newPassword2) {
+      setPwdError('Новый пароль и подтверждение не совпадают')
+      return
+    }
+
+    setPwdSaving(true)
+    try {
+      await apiChangePassword({
+        old_password: oldPassword,
+        new_password: newPassword,
+      })
+      setPwdSuccess(true)
+      setOldPassword('')
+      setNewPassword('')
+      setNewPassword2('')
+    } catch (err) {
+      setPwdError(err instanceof Error ? err.message : 'Ошибка смены пароля')
+    } finally {
+      setPwdSaving(false)
+    }
+  }
+
   return (
     <div className="max-w-md mx-auto px-4 py-12">
       <h1 className="text-3xl font-bold text-gray-900 mb-1">Мой профиль</h1>
-      <p className="text-gray-500 mb-8">Редактирование личных данных</p>
+      <p className="text-gray-500 mb-8">Редактирование личных данных и пароля</p>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         {/* Краткая инфо */}
@@ -71,7 +105,7 @@ export default function Profile() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 mb-8">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Полное имя
@@ -120,6 +154,75 @@ export default function Profile() {
             {saving ? 'Сохранение...' : 'Сохранить изменения'}
           </button>
         </form>
+
+        <div className="pt-6 border-t border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Смена пароля</h2>
+
+          {pwdSuccess && (
+            <div className="mb-4 px-4 py-3 bg-green-50 border border-green-100 rounded-xl text-green-600 text-sm">
+              Пароль успешно изменён
+            </div>
+          )}
+          {pwdError && (
+            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">
+              {pwdError}
+            </div>
+          )}
+
+          <form onSubmit={handlePasswordChange} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Текущий пароль
+              </label>
+              <input
+                type="password"
+                required
+                value={oldPassword}
+                onChange={e => setOldPassword(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Новый пароль
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm
+                             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Подтверждение нового пароля
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newPassword2}
+                  onChange={e => setNewPassword2(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm
+                             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={pwdSaving}
+              className="w-full bg-gray-900 hover:bg-gray-800 disabled:opacity-60
+                         text-white font-medium py-2.5 rounded-xl transition-colors"
+            >
+              {pwdSaving ? 'Сохранение...' : 'Изменить пароль'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   )

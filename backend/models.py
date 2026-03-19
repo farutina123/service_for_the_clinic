@@ -54,6 +54,11 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=6, examples=["oldpass123"])
+    new_password: str = Field(..., min_length=6, examples=["newpass456"])
+
+
 # ── User ───────────────────────────────────────────────────────────────────────
 
 class UserOut(BaseModel):

@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import uuid4
 from datetime import datetime
 
-from models import RegisterRequest, LoginRequest, TokenResponse, UserOut
+from models import RegisterRequest, LoginRequest, TokenResponse, UserOut, ChangePasswordRequest
 from auth.utils import hash_password, verify_password, create_access_token
 from dependencies import get_current_user
 import storage
@@ -74,3 +74,25 @@ def logout(
 )
 def me(current_user: dict = Depends(get_current_user)):
     return current_user
+
+
+@router.post(
+    "/change-password",
+    summary="Сменить пароль текущего пользователя",
+)
+def change_password(
+    data: ChangePasswordRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    # Проверяем старый пароль
+    if not verify_password(data.old_password, current_user["password_hash"]):
+        raise HTTPException(
+            status_code=400,
+            detail="Неверный текущий пароль",
+        )
+
+    # Обновляем пароль в БД
+    new_hash = hash_password(data.new_password)
+    storage.update_user(current_user["id"], {"password_hash": new_hash})
+
+    return {"message": "Пароль успешно изменён"}
