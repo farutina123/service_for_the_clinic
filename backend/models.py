@@ -206,3 +206,16 @@ class AppointmentOut(BaseModel):
     notes: Optional[str] = None
     user_id: Optional[str] = None
     created_at: datetime
+
+
+# ── Telegram ───────────────────────────────────────────────────────────────────
+
+class TelegramLinkTokenOut(BaseModel):
+    deep_link: str
+    expires_in_minutes: int
+
+
+class TelegramLinkStatusOut(BaseModel):
+    linked: bool
+    chat_id_masked: Optional[str] = None
+    linked_at: Optional[datetime] = None

@@ -60,7 +60,9 @@ CREATE TABLE IF NOT EXISTS users (
                           CHECK (role IN ('user', 'admin')),
     discount      REAL    NOT NULL DEFAULT 0.10,
     is_active     INTEGER NOT NULL DEFAULT 1,
-    created_at    TEXT    NOT NULL
+    created_at    TEXT    NOT NULL,
+    telegram_chat_id TEXT UNIQUE,
+    telegram_linked_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS doctor_statuses (
@@ -118,6 +120,27 @@ CREATE TABLE IF NOT EXISTS appointments (
 CREATE TABLE IF NOT EXISTS revoked_tokens (
     token      TEXT PRIMARY KEY,
     revoked_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS telegram_link_tokens (
+    token       TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id),
+    expires_at  TEXT NOT NULL,
+    is_used     INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS telegram_notifications (
+    id             TEXT PRIMARY KEY,
+    appointment_id TEXT NOT NULL REFERENCES appointments(id),
+    user_id        TEXT REFERENCES users(id),
+    chat_id        TEXT NOT NULL,
+    message_type   TEXT NOT NULL,
+    status         TEXT NOT NULL,
+    error_code     TEXT,
+    error_text     TEXT,
+    created_at     TEXT NOT NULL,
+    sent_at        TEXT
 );
 """
 
@@ -334,6 +357,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE appointments ADD COLUMN notes TEXT",
         "ALTER TABLE revoked_tokens ADD COLUMN revoked_at TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN telegram_chat_id TEXT",
+        "ALTER TABLE users ADD COLUMN telegram_linked_at TEXT",
     ]
     for sql in migrations:
         try:

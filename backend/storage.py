@@ -3,7 +3,8 @@
 Все функции возвращают dict, совместимые с Pydantic-моделями API.
 """
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
+from uuid import uuid4
 
 from database import (
     get_db,
@@ -53,6 +54,36 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
+def get_user_telegram_chat_id(user_id: str) -> Optional[str]:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT telegram_chat_id FROM users WHERE id = ? AND is_active = 1",
+            (user_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return row["telegram_chat_id"]
+
+
+def set_user_telegram_chat_id(user_id: str, chat_id: str) -> Optional[dict]:
+    now = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET telegram_chat_id = ?, telegram_linked_at = ? WHERE id = ? AND is_active = 1",
+            (chat_id, now, user_id),
+        )
+    return get_user_by_id(user_id)
+
+
+def clear_user_telegram_chat_id(user_id: str) -> Optional[dict]:
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET telegram_chat_id = NULL, telegram_linked_at = NULL WHERE id = ? AND is_active = 1",
+            (user_id,),
+        )
+    return get_user_by_id(user_id)
+
+
 def get_user_by_phone(phone: str) -> Optional[dict]:
     with get_db() as conn:
         row = conn.execute(
@@ -70,6 +101,39 @@ def create_user(data: dict) -> dict:
             data,
         )
     return get_user_by_id(data["id"])
+
+
+def create_telegram_link_token(user_id: str, ttl_minutes: int) -> str:
+    token = str(uuid4())
+    now = datetime.utcnow()
+    expires_at = (now + timedelta(minutes=ttl_minutes)).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO telegram_link_tokens
+               (token, user_id, expires_at, is_used, created_at)
+               VALUES (?, ?, ?, 0, ?)""",
+            (token, user_id, expires_at, now.isoformat()),
+        )
+    return token
+
+
+def use_telegram_link_token(token: str) -> Optional[str]:
+    now = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT user_id, expires_at, is_used
+               FROM telegram_link_tokens WHERE token = ?""",
+            (token,),
+        ).fetchone()
+        if not row:
+            return None
+        if row["is_used"] == 1 or row["expires_at"] < now:
+            return None
+        conn.execute(
+            "UPDATE telegram_link_tokens SET is_used = 1 WHERE token = ?",
+            (token,),
+        )
+        return row["user_id"]
 
 
 def update_user(user_id: str, updates: dict) -> Optional[dict]:
@@ -294,4 +358,38 @@ def revoke_token(token: str) -> None:
         conn.execute(
             "INSERT OR IGNORE INTO revoked_tokens (token, revoked_at) VALUES (?, ?)",
             (token, datetime.utcnow().isoformat()),
+        )
+
+
+def create_telegram_notification_log(
+    appointment_id: str,
+    user_id: Optional[str],
+    chat_id: str,
+    message_type: str,
+) -> str:
+    notification_id = str(uuid4())
+    now = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO telegram_notifications
+               (id, appointment_id, user_id, chat_id, message_type, status, created_at)
+               VALUES (?, ?, ?, ?, ?, 'pending', ?)""",
+            (notification_id, appointment_id, user_id, chat_id, message_type, now),
+        )
+    return notification_id
+
+
+def update_telegram_notification_log(
+    notification_id: str,
+    status: str,
+    error_code: Optional[str] = None,
+    error_text: Optional[str] = None,
+) -> None:
+    sent_at = datetime.utcnow().isoformat() if status == "sent" else None
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE telegram_notifications
+               SET status = ?, error_code = ?, error_text = ?, sent_at = ?
+               WHERE id = ?""",
+            (status, error_code, error_text, sent_at, notification_id),
         )

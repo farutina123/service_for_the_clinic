@@ -169,6 +169,17 @@ export interface ApiTokenResponse {
   token_type: string
 }
 
+export interface ApiTelegramLinkToken {
+  deep_link: string
+  expires_in_minutes: number
+}
+
+export interface ApiTelegramStatus {
+  linked: boolean
+  chat_id_masked: string | null
+  linked_at: string | null
+}
+
 // ── HTTP-обёртка ───────────────────────────────────────────────────────────
 
 function getToken(): string | null {
@@ -292,6 +303,16 @@ export async function apiChangePassword(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
+}
+
+export async function apiCreateTelegramLinkToken(): Promise<ApiTelegramLinkToken> {
+  return apiFetch<ApiTelegramLinkToken>('/telegram/link-token', {
+    method: 'POST',
+  })
+}
+
+export async function apiGetTelegramStatus(): Promise<ApiTelegramStatus> {
+  return apiFetch<ApiTelegramStatus>('/telegram/me')
 }
 
 // ── Users ──────────────────────────────────────────────────────────────────

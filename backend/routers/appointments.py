@@ -1,14 +1,18 @@
 from typing import List, Optional
 from uuid import uuid4
 from datetime import date, datetime
+import logging
 
 from fastapi import APIRouter, HTTPException, Depends
 
 from models import AppointmentOut, AppointmentCreate, AppointmentStatusUpdate, AppointmentDoctorUpdate
 from dependencies import get_current_user, optional_user, require_admin
+from config import TELEGRAM_NOTIFY_ENABLED
+from telegram_client import send_message, TelegramSendError
 import storage
 
 router = APIRouter()
+logger = logging.getLogger("app.appointments")
 
 
 @router.get(
@@ -94,7 +98,44 @@ def create_appointment(
         "user_id": current_user["id"] if current_user else None,
         "created_at": datetime.utcnow().isoformat(),
     }
-    return storage.create_appointment(appointment)
+    created = storage.create_appointment(appointment)
+
+    user_id = created.get("user_id")
+    if TELEGRAM_NOTIFY_ENABLED and user_id:
+        chat_id = storage.get_user_telegram_chat_id(user_id)
+        if chat_id:
+            message_text = (
+                "Ваша запись создана.\n"
+                f"ID: {created['id']}\n"
+                f"Дата: {created['appointment_date']}\n"
+                f"Время: {created['appointment_time']}\n"
+                f"Статус: {created['status']}"
+            )
+            log_id = storage.create_telegram_notification_log(
+                appointment_id=created["id"],
+                user_id=user_id,
+                chat_id=chat_id,
+                message_type="appointment_created",
+            )
+            try:
+                send_message(chat_id=chat_id, text=message_text)
+                storage.update_telegram_notification_log(log_id, status="sent")
+            except TelegramSendError as exc:
+                logger.error(
+                    "telegram notify failed: appointment_id=%s user_id=%s chat_id=%s code=%s error=%s",
+                    created["id"],
+                    user_id,
+                    chat_id,
+                    exc.code,
+                    exc.message,
+                )
+                storage.update_telegram_notification_log(
+                    log_id,
+                    status="failed",
+                    error_code=exc.code,
+                    error_text=exc.message,
+                )
+    return created
 
 
 @router.put(

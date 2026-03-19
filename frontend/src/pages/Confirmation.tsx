@@ -1,11 +1,57 @@
 // Страница успешного подтверждения записи.
 // Данные получаем через router state (navigate('/booking/confirmation', { state: { appointment } })).
+import { useEffect, useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import type { Appointment } from '../data/mockData'
+import { useAuth } from '../context/AuthContext'
+import { apiCreateTelegramLinkToken, apiGetTelegramStatus } from '../api'
 
 export default function Confirmation() {
   const location = useLocation()
+  const { user } = useAuth()
   const appointment = (location.state as { appointment?: Appointment } | null)?.appointment
+  const [telegramLinked, setTelegramLinked] = useState(false)
+  const [telegramLink, setTelegramLink] = useState<string | null>(null)
+  const [telegramLoading, setTelegramLoading] = useState(false)
+  const [telegramError, setTelegramError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    let isCancelled = false
+
+    async function loadTelegramBlock() {
+      setTelegramLoading(true)
+      setTelegramError(null)
+      try {
+        const status = await apiGetTelegramStatus()
+        if (isCancelled) return
+        if (status.linked) {
+          setTelegramLinked(true)
+          setTelegramLink(null)
+          return
+        }
+        setTelegramLinked(false)
+        const result = await apiCreateTelegramLinkToken()
+        if (!isCancelled) {
+          setTelegramLink(result.deep_link)
+        }
+      } catch (err: unknown) {
+        if (!isCancelled) {
+          const message = err instanceof Error ? err.message : 'Не удалось подготовить ссылку Telegram'
+          setTelegramError(message)
+        }
+      } finally {
+        if (!isCancelled) {
+          setTelegramLoading(false)
+        }
+      }
+    }
+
+    loadTelegramBlock()
+    return () => {
+      isCancelled = true
+    }
+  }, [user])
 
   // Если зашли напрямую без данных (напр. обновили страницу) — общее сообщение
   if (!appointment) {
@@ -82,6 +128,54 @@ export default function Confirmation() {
           </div>
         ))}
       </div>
+
+      {/* ─── Подключение Telegram после заявки ─── */}
+      {user && (
+        <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+          {telegramLinked ? (
+            <>
+              <p className="text-sm font-semibold text-green-800 mb-1">
+                Telegram подключён
+              </p>
+              <p className="text-sm text-green-700">
+                Уведомления о новых записях будут приходить вам в бот.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-blue-800 mb-1">
+                Получать уведомления о записи в Telegram
+              </p>
+              <p className="text-sm text-blue-700 mb-3">
+                Нажмите кнопку ниже и в боте выберите Start. После этого уведомления будут приходить автоматически.
+              </p>
+
+              {telegramError && (
+                <p className="text-sm text-red-600 mb-3">{telegramError}</p>
+              )}
+
+              {telegramLink ? (
+                <a
+                  href={telegramLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                >
+                  Подключить Telegram
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center justify-center rounded-xl bg-blue-300 px-4 py-2.5 text-sm font-semibold text-white cursor-not-allowed"
+                >
+                  {telegramLoading ? 'Проверяем подключение...' : 'Ссылка недоступна'}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* ─── Кнопки навигации ─── */}
       <div className="flex flex-col gap-3">
