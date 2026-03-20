@@ -5,7 +5,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from passlib.context import CryptContext
-from config import DB_PATH
+from config import DB_PATH, SEED_DEMO_DATA
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -373,4 +373,5 @@ def init_db() -> None:
     with get_db() as conn:
         _migrate(conn)
         _seed_statuses(conn)
-        _seed_demo_data(conn)
+        if SEED_DEMO_DATA:
+            _seed_demo_data(conn)

@@ -23,7 +23,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from database import init_db
-from config import CORS_ORIGINS, TELEGRAM_BOT_TOKEN, TELEGRAM_USE_POLLING
+from config import (
+    CORS_ORIGINS,
+    SHOW_DEMO_CREDENTIALS_IN_DOCS,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_USE_POLLING,
+)
 from auth.router import router as auth_router
 from routers.users import router as users_router
 from routers.doctors import router as doctors_router
@@ -59,14 +64,18 @@ async def lifespan(app: FastAPI):
         _telegram_poller_task = None
 
 
-app = FastAPI(
-    title="МедКлиника API",
-    description=(
-        "REST API для сервиса записи на приём в клинику.\n\n"
+description = "REST API для сервиса записи на приём в клинику."
+if SHOW_DEMO_CREDENTIALS_IN_DOCS:
+    description += (
+        "\n\n"
         "**Тестовые учётные данные:**\n"
         "- Администратор: `+79000000000` / `admin123`\n"
         "- Пользователь (скидка 10%): `+79161234567` / `user123`"
-    ),
+    )
+
+app = FastAPI(
+    title="МедКлиника API",
+    description=description,
     version="1.0.0",
     lifespan=lifespan,
 )

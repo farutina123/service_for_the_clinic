@@ -540,9 +540,15 @@
 
   function colorizeJSON(obj) {
     const str = JSON.stringify(obj, null, 2);
-    return str
+    const escaped = str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    return escaped
       .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, match => {
-        if (/^"/.test(match)) {
+        if (/^&quot;/.test(match)) {
           if (/:$/.test(match)) return `<span class="json-key">${match}</span>`;
           return `<span class="json-str">${match}</span>`;
         }

@@ -7,7 +7,17 @@ from typing import List
 # Тот же .env, что и в main.py (папка backend)
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
-SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production-please")
+APP_ENV: str = os.getenv("APP_ENV", "development").strip().lower()
+
+
+def _required_secret(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"{name} is required and must be set in environment")
+    return value
+
+
+SECRET_KEY: str = _required_secret("SECRET_KEY")
 ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
     os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
@@ -33,6 +43,42 @@ TELEGRAM_CONNECT_TOKEN_TTL_MINUTES: int = int(
 )
 TELEGRAM_HTTP_TIMEOUT_SECONDS: int = int(
     os.getenv("TELEGRAM_HTTP_TIMEOUT_SECONDS", "5")
+)
+
+# Rate limit для /auth/login и /auth/register (in-memory, на процесс)
+# Лимит применяется отдельно по IP и по номеру телефона.
+def _positive_int(name: str, default: str, minimum: int = 1) -> int:
+    raw = os.getenv(name, default).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        value = int(default)
+    return max(minimum, value)
+
+
+AUTH_LOGIN_RATE_LIMIT: int = _positive_int(
+    "AUTH_LOGIN_RATE_LIMIT", "5", minimum=1
+)
+AUTH_LOGIN_RATE_WINDOW_SECONDS: int = _positive_int(
+    "AUTH_LOGIN_RATE_WINDOW_SECONDS", "900", minimum=1
+)
+AUTH_REGISTER_RATE_LIMIT: int = _positive_int(
+    "AUTH_REGISTER_RATE_LIMIT", "3", minimum=1
+)
+AUTH_REGISTER_RATE_WINDOW_SECONDS: int = _positive_int(
+    "AUTH_REGISTER_RATE_WINDOW_SECONDS", "900", minimum=1
+)
+
+# Глобальный выключатель rate limit для /auth (для E2E/отладки).
+AUTH_RATE_LIMIT_ENABLED: bool = (
+    os.getenv("AUTH_RATE_LIMIT_ENABLED", "true").strip().lower() == "true"
+)
+
+SEED_DEMO_DATA: bool = (
+    os.getenv("SEED_DEMO_DATA", "true").strip().lower() == "true"
+)
+SHOW_DEMO_CREDENTIALS_IN_DOCS: bool = (
+    os.getenv("SHOW_DEMO_CREDENTIALS_IN_DOCS", "true").strip().lower() == "true"
 )
 
 

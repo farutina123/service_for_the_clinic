@@ -261,7 +261,6 @@ test.describe('E2E сценарии клиники', () => {
     const createdDoctor = (await doctorRes.json()) as { id: string }
 
     const serviceRes = await request.post('http://localhost:8000/services/', {
-      headers: authHeaders,
       headers: { ...authHeaders, 'Content-Type': 'application/json' },
       data: {
         name: serviceName,

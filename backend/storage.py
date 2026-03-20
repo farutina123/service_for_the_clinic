@@ -14,6 +14,36 @@ from database import (
     DOCTOR_INACTIVE_STATUS_ID,
 )
 
+USER_UPDATE_FIELDS = {
+    "name",
+    "email",
+    "role",
+    "discount",
+    "password_hash",
+    "telegram_chat_id",
+    "telegram_linked_at",
+}
+
+DOCTOR_UPDATE_FIELDS = {
+    "name",
+    "specialty",
+    "experience_years",
+    "education",
+    "description",
+    "photo_url",
+    "status_id",
+}
+
+SERVICE_UPDATE_FIELDS = {
+    "name",
+    "category",
+    "price",
+    "duration_minutes",
+    "description",
+    "doctor_id",
+    "is_active",
+}
+
 
 # ── Преобразование строк БД → dict для API ───────────────────────────────────
 
@@ -139,8 +169,11 @@ def use_telegram_link_token(token: str) -> Optional[str]:
 def update_user(user_id: str, updates: dict) -> Optional[dict]:
     if not updates:
         return get_user_by_id(user_id)
-    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
-    params = {**updates, "_id": user_id}
+    safe_updates = {k: v for k, v in updates.items() if k in USER_UPDATE_FIELDS}
+    if not safe_updates:
+        return get_user_by_id(user_id)
+    set_clause = ", ".join(f"{k} = :{k}" for k in safe_updates)
+    params = {**safe_updates, "_id": user_id}
     with get_db() as conn:
         conn.execute(
             f"UPDATE users SET {set_clause} WHERE id = :_id", params
@@ -200,13 +233,14 @@ def update_doctor(doctor_id: str, updates: dict) -> Optional[dict]:
         db["status_id"] = (
             DOCTOR_ACTIVE_STATUS_ID if is_active else DOCTOR_INACTIVE_STATUS_ID
         )
-    if not db:
+    safe_updates = {k: v for k, v in db.items() if k in DOCTOR_UPDATE_FIELDS}
+    if not safe_updates:
         return get_doctor_by_id(doctor_id)
-    set_clause = ", ".join(f"{k} = :{k}" for k in db)
-    db["_id"] = doctor_id
+    set_clause = ", ".join(f"{k} = :{k}" for k in safe_updates)
+    params = {**safe_updates, "_id": doctor_id}
     with get_db() as conn:
         conn.execute(
-            f"UPDATE doctors SET {set_clause} WHERE id = :_id", db
+            f"UPDATE doctors SET {set_clause} WHERE id = :_id", params
         )
     return get_doctor_by_id(doctor_id)
 
@@ -253,13 +287,14 @@ def update_service(service_id: str, updates: dict) -> Optional[dict]:
     db = {**updates}
     if "is_active" in db:
         db["is_active"] = 1 if db["is_active"] else 0
-    if not db:
+    safe_updates = {k: v for k, v in db.items() if k in SERVICE_UPDATE_FIELDS}
+    if not safe_updates:
         return get_service_by_id(service_id)
-    set_clause = ", ".join(f"{k} = :{k}" for k in db)
-    db["_id"] = service_id
+    set_clause = ", ".join(f"{k} = :{k}" for k in safe_updates)
+    params = {**safe_updates, "_id": service_id}
     with get_db() as conn:
         conn.execute(
-            f"UPDATE services SET {set_clause} WHERE id = :_id", db
+            f"UPDATE services SET {set_clause} WHERE id = :_id", params
         )
     return get_service_by_id(service_id)
 
