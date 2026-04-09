@@ -378,6 +378,73 @@ def get_occupied_slots(doctor_id: str, date_str: str) -> list[str]:
         return [r["appointment_time"] for r in rows]
 
 
+def get_occupied_service_slots(service_id: str, date_str: str) -> list[str]:
+    """Возвращает занятые слоты для услуги без привязки к врачу (doctor_id IS NULL)."""
+    cancelled_id = APPOINTMENT_STATUS_BY_NAME["cancelled"]
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT appointment_time FROM appointments
+               WHERE service_id = ? AND doctor_id IS NULL AND appointment_date = ? AND status_id != ?""",
+            (service_id, date_str, cancelled_id),
+        ).fetchall()
+        return [r["appointment_time"] for r in rows]
+
+
+def get_doctor_available_times(doctor_id: str, date_str: str) -> list[str]:
+    """Явно заданные доступные слоты врача на дату (может быть пусто)."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT time FROM doctor_availability_slots
+               WHERE doctor_id = ? AND date = ?
+               ORDER BY time""",
+            (doctor_id, date_str),
+        ).fetchall()
+        return [r["time"] for r in rows]
+
+
+def replace_doctor_available_times(doctor_id: str, date_str: str, times: list[str]) -> None:
+    """Перезаписывает доступные слоты врача на дату."""
+    now = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM doctor_availability_slots WHERE doctor_id = ? AND date = ?",
+            (doctor_id, date_str),
+        )
+        if times:
+            conn.executemany(
+                """INSERT OR IGNORE INTO doctor_availability_slots
+                   (doctor_id, date, time, created_at) VALUES (?, ?, ?, ?)""",
+                [(doctor_id, date_str, t, now) for t in times],
+            )
+
+
+def get_service_available_times(service_id: str, date_str: str) -> list[str]:
+    """Явно заданные доступные слоты услуги (для doctorless услуг) на дату (может быть пусто)."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT time FROM service_availability_slots
+               WHERE service_id = ? AND date = ?
+               ORDER BY time""",
+            (service_id, date_str),
+        ).fetchall()
+        return [r["time"] for r in rows]
+
+
+def replace_service_available_times(service_id: str, date_str: str, times: list[str]) -> None:
+    """Перезаписывает доступные слоты услуги (для doctorless услуг) на дату."""
+    now = datetime.utcnow().isoformat()
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM service_availability_slots WHERE service_id = ? AND date = ?",
+            (service_id, date_str),
+        )
+        if times:
+            conn.executemany(
+                """INSERT OR IGNORE INTO service_availability_slots
+                   (service_id, date, time, created_at) VALUES (?, ?, ?, ?)""",
+                [(service_id, date_str, t, now) for t in times],
+            )
+
 # ── Revoked tokens ───────────────────────────────────────────────────────────
 
 def is_token_revoked(token: str) -> bool:

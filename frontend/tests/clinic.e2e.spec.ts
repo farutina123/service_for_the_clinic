@@ -145,13 +145,58 @@ test.describe('E2E сценарии клиники', () => {
 
     await page.goto(`/booking?serviceId=${encodeURIComponent(doctorless.id)}`)
 
-    // Заполняем шаг 2 (после выбора услуги UI сразу на step=2).
-    await selectDateTimeAndProceed(page)
+    // Заполняем шаг 2 детерминированно: берём первый доступный слот из API schedule,
+    // чтобы тест не зависел от заполненности БД.
+    // С новым поведением schedule слоты появляются только если админ их задал.
+    const adminLoginRes = await request.post('http://localhost:8000/auth/login', {
+      headers: { 'Content-Type': 'application/json' },
+      data: { phone: ADMIN_PHONE, password: ADMIN_PASSWORD },
+    })
+    expect(adminLoginRes.ok(), 'Не удалось залогиниться админом через API').toBeTruthy()
+    const { access_token: adminToken } = (await adminLoginRes.json()) as { access_token: string }
+    const authHeaders = { Authorization: `Bearer ${adminToken}` }
+
+    const scheduleRes = await request.get(`http://localhost:8000/services/${encodeURIComponent(doctorless.id)}/schedule`)
+    expect(scheduleRes.ok(), 'Не удалось получить schedule услуги').toBeTruthy()
+    const schedule = (await scheduleRes.json()) as Array<{
+      date: string
+      label: string
+      slots: Array<{ time: string; available: boolean }>
+    }>
+    const day = schedule[0]
+    if (!day) throw new Error('Schedule пустой — невозможно продолжить тест')
+
+    // Задаём доступность для doctorless услуги на первую дату schedule.
+    const setAvailRes = await request.put(`http://localhost:8000/services/${encodeURIComponent(doctorless.id)}/availability`, {
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      data: { date: day.date, times: ['10:00', '10:30'] },
+    })
+    expect(setAvailRes.ok(), 'Не удалось задать доступность услуги').toBeTruthy()
+
+    const scheduleRes2 = await request.get(`http://localhost:8000/services/${encodeURIComponent(doctorless.id)}/schedule`)
+    expect(scheduleRes2.ok(), 'Не удалось получить schedule услуги после задания доступности').toBeTruthy()
+    const schedule2 = (await scheduleRes2.json()) as Array<{
+      date: string
+      label: string
+      slots: Array<{ time: string; available: boolean }>
+    }>
+    const day2 = schedule2.find(d => d.slots.some(s => s.available))
+    if (!day2) throw new Error('В schedule не найдено ни одного доступного слота после задания доступности')
+    const slot = day2.slots.find(s => s.available)!
+
+    await page.getByRole('heading', { name: 'Выберите дату и время' }).waitFor()
+    const step2Root = page.getByRole('heading', { name: 'Выберите дату и время' }).locator('xpath=..')
+    const labelSecondPart = day2.label.split(', ')[1] ?? day2.label
+    await step2Root.locator('button').filter({ hasText: labelSecondPart }).first().click()
+    await step2Root.getByRole('button', { name: slot.time }).click()
+
+    const nextButton = page.getByRole('button', { name: /Далее\s*→/ })
+    await nextButton.click()
 
     // Шаг 3: ничего не заполняем — кнопка «Далее» должна быть недоступна,
     // а шаг подтверждения не должен открываться.
-    const nextButton = page.getByRole('button', { name: /Далее\s*→/ })
-    await expect(nextButton).toBeDisabled()
+    const nextButton2 = page.getByRole('button', { name: /Далее\s*→/ })
+    await expect(nextButton2).toBeDisabled()
     await expect(page.getByRole('heading', { name: 'Подтвердите запись' })).toHaveCount(0)
   })
 
@@ -278,6 +323,57 @@ test.describe('E2E сценарии клиники', () => {
 
     await page.goto('/services')
     await expect(page.getByText(serviceName)).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('Админ задаёт доступность слотов, Booking показывает только их', async ({ page, request }) => {
+    // Логинимся админом через API, чтобы вызвать защищённый endpoint доступности.
+    const loginRes = await request.post('http://localhost:8000/auth/login', {
+      headers: { 'Content-Type': 'application/json' },
+      data: { phone: ADMIN_PHONE, password: ADMIN_PASSWORD },
+    })
+    expect(loginRes.ok(), 'Не удалось залогиниться админом через API').toBeTruthy()
+    const { access_token: token } = (await loginRes.json()) as { access_token: string }
+    const authHeaders = { Authorization: `Bearer ${token}` }
+
+    // Берём услугу с врачом (doctor_id != null).
+    const servicesRes = await request.get('http://localhost:8000/services/')
+    expect(servicesRes.ok(), 'Не удалось получить список услуг').toBeTruthy()
+    const services = (await servicesRes.json()) as Array<{ id: string; doctor_id: string | null }>
+    const doctorService = services.find(s => s.doctor_id) ?? services[0]
+    if (!doctorService?.doctor_id) throw new Error('Не удалось найти услугу с врачом для теста доступности')
+
+    // Берём дату из schedule, чтобы она точно была видна в UI.
+    const scheduleRes = await request.get(`http://localhost:8000/services/${encodeURIComponent(doctorService.id)}/schedule`)
+    expect(scheduleRes.ok(), 'Не удалось получить schedule услуги').toBeTruthy()
+    const schedule = (await scheduleRes.json()) as Array<{ date: string; label: string }>
+    const day = schedule[0]
+    if (!day) throw new Error('Schedule пустой — невозможно протестировать доступность')
+
+    const allowedTimes = ['10:00', '10:30']
+
+    // Задаём доступность на дату для врача.
+    const setAvailRes = await request.put(`http://localhost:8000/doctors/${encodeURIComponent(doctorService.doctor_id)}/availability`, {
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      data: { date: day.date, times: allowedTimes },
+    })
+    expect(setAvailRes.ok(), 'Не удалось задать доступность врача').toBeTruthy()
+
+    // Открываем Booking по serviceId → UI стартует со step=2 и грузит schedule из API.
+    await page.goto(`/booking?serviceId=${encodeURIComponent(doctorService.id)}`)
+    await page.getByRole('heading', { name: 'Выберите дату и время' }).waitFor()
+
+    const step2Root = page.getByRole('heading', { name: 'Выберите дату и время' }).locator('xpath=..')
+    const labelSecondPart = day.label.split(', ')[1] ?? day.label
+
+    // Выбираем дату по подписи ("10 апр" и т.п.)
+    await step2Root.locator('button').filter({ hasText: labelSecondPart }).first().click()
+
+    // Должны показываться только заданные времена.
+    const timeButtons = step2Root.locator('button').filter({ hasText: /\d{2}:\d{2}/ })
+    await expect(timeButtons).toHaveCount(allowedTimes.length)
+    for (const t of allowedTimes) {
+      await expect(step2Root.getByRole('button', { name: t })).toBeVisible()
+    }
   })
 
   test('Админ может менять статус записей пользователей', async ({ page, request }) => {

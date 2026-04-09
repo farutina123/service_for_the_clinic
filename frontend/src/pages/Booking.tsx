@@ -5,13 +5,12 @@
  * 3. Данные пациента
  * 4. Сводка + подтверждение — POST к API, сохранение в localStorage
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { fetchServices, createAppointment, toLocalAppointment } from '../api'
+import { fetchServices, createAppointment, toLocalAppointment, fetchServiceSchedule } from '../api'
 import { useApi } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import {
-  generateSchedule,
   saveAppointment,
   type Service,
   type ScheduleDay,
@@ -53,12 +52,12 @@ export default function Booking() {
 
   const [step, setStep]                   = useState(1)
   const [form, setForm]                   = useState<FormState>(EMPTY)
-  const [schedule]                        = useState<ScheduleDay[]>(generateSchedule)
+  const [schedule, setSchedule]           = useState<ScheduleDay[]>([])
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [phoneTouched, setPhoneTouched]   = useState(false)
   const [submitting, setSubmitting]       = useState(false)
   const [submitError, setSubmitError]     = useState<string | null>(null)
-  const [occupiedSlots, setOccupiedSlots] = useState<string[]>([])
-  const [slotsLoading, setSlotsLoading]   = useState(false)
   const preSelectedRef                    = useRef(false)
 
   const navigate       = useNavigate()
@@ -94,30 +93,30 @@ export default function Booking() {
     }
   }, [services, searchParams])
 
-  // Загружаем занятые слоты из API когда выбраны дата + услуга с врачом
-  const fetchOccupied = useCallback(async (doctorId: string, date: string) => {
-    setSlotsLoading(true)
-    try {
-      const res = await fetch(`/api/doctors/${doctorId}/slots?date=${date}`)
-      if (res.ok) {
-        const data = await res.json()
-        setOccupiedSlots(data.occupied ?? [])
-      }
-    } catch {
-      // сетевая ошибка — оставляем слоты как есть
-    } finally {
-      setSlotsLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
-    if (form.selectedDate && form.selectedService?.doctorId) {
-      setOccupiedSlots([])
-      fetchOccupied(form.selectedService.doctorId, form.selectedDate)
-    } else {
-      setOccupiedSlots([])
+    async function loadSchedule(serviceId: string) {
+      setScheduleLoading(true)
+      setScheduleError(null)
+      setSchedule([])
+      try {
+        const days = await fetchServiceSchedule(serviceId)
+        setSchedule(days)
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Не удалось загрузить расписание'
+        setScheduleError(msg)
+      } finally {
+        setScheduleLoading(false)
+      }
     }
-  }, [form.selectedDate, form.selectedService?.doctorId, fetchOccupied])
+
+    if (form.selectedService?.id) {
+      // При смене услуги сбрасываем выбранные дату/время и перезагружаем расписание.
+      setForm(prev => ({ ...prev, selectedDate: '', selectedTime: '' }))
+      void loadSchedule(form.selectedService.id)
+    } else {
+      setSchedule([])
+    }
+  }, [form.selectedService?.id])
 
   const daySchedule = schedule.find(d => d.date === form.selectedDate)
 
@@ -291,7 +290,22 @@ export default function Booking() {
           <h2 className="text-xl font-bold text-gray-900 mb-1">Выберите дату и время</h2>
           <p className="text-gray-500 text-sm mb-6">Доступные слоты на ближайшие 2 недели</p>
 
-          {schedule.length === 0 && (
+          {scheduleLoading && (
+            <div className="text-center py-12 text-gray-400">
+              <div className="text-5xl mb-4">⏳</div>
+              <p className="text-lg font-medium text-gray-500">Загружаем расписание...</p>
+            </div>
+          )}
+
+          {!scheduleLoading && scheduleError && (
+            <div className="text-center py-12 text-gray-400">
+              <div className="text-5xl mb-4">⚠️</div>
+              <p className="text-lg font-medium text-gray-600 mb-1">Не удалось загрузить расписание</p>
+              <p className="text-sm mt-1">{scheduleError}</p>
+            </div>
+          )}
+
+          {!scheduleLoading && !scheduleError && schedule.length === 0 && (
             <div className="text-center py-16 text-gray-400">
               <div className="text-5xl mb-4">📅</div>
               <p className="text-lg font-medium text-gray-500">Нет доступных дат для записи</p>
@@ -300,43 +314,35 @@ export default function Booking() {
             </div>
           )}
 
-          <div className="flex gap-2 overflow-x-auto pb-3 mb-6 scrollbar-hide">
-            {schedule.map(day => (
-              <button
-                key={day.date}
-                onClick={() => { update('selectedDate', day.date); update('selectedTime', '') }}
-                className={`flex-shrink-0 px-3 py-2.5 rounded-xl text-center min-w-[72px]
-                            border transition-all ${
-                  form.selectedDate === day.date
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
-                }`}
-              >
-                <p className="text-xs font-medium">{day.label.split(',')[0]}</p>
-                <p className="text-sm font-bold mt-0.5">{day.label.split(', ')[1]}</p>
-              </button>
-            ))}
-          </div>
+          {!scheduleLoading && !scheduleError && schedule.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-3 mb-6 scrollbar-hide">
+              {schedule.map(day => (
+                <button
+                  key={day.date}
+                  onClick={() => { update('selectedDate', day.date); update('selectedTime', '') }}
+                  className={`flex-shrink-0 px-3 py-2.5 rounded-xl text-center min-w-[72px]
+                              border transition-all ${
+                    form.selectedDate === day.date
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
+                  }`}
+                >
+                  <p className="text-xs font-medium">{day.label.split(',')[0]}</p>
+                  <p className="text-sm font-bold mt-0.5">{day.label.split(', ')[1]}</p>
+                </button>
+              ))}
+            </div>
+          )}
 
           {form.selectedDate && daySchedule ? (
             (() => {
-              const slots = daySchedule.slots.map(s => ({
-                ...s,
-                available: s.available && !occupiedSlots.includes(s.time),
-              }))
+              const slots = daySchedule.slots
               const hasAvailable = slots.some(s => s.available)
 
               return hasAvailable ? (
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-medium text-gray-700">Доступное время</p>
-                    {slotsLoading && (
-                      <span className="flex items-center gap-1.5 text-xs text-gray-400">
-                        <span className="w-3 h-3 border border-gray-400 border-t-transparent
-                                        rounded-full animate-spin inline-block" />
-                        Проверяем занятость...
-                      </span>
-                    )}
                   </div>
                   <div className="grid grid-cols-4 gap-2">
                     {slots.map(slot => (

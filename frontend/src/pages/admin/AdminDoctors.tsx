@@ -6,6 +6,7 @@ import {
   deleteDoctor,
   type ApiDoctor,
 } from '../../api'
+import AvailabilityModal from './AvailabilityModal'
 
 const EMPTY: Omit<ApiDoctor, 'id' | 'is_active'> = {
   name: '',
@@ -59,6 +60,7 @@ export default function AdminDoctors() {
   const [editId,  setEditId]  = useState<string | null>(null)
   const [saving,  setSaving]  = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [availabilityTarget, setAvailabilityTarget] = useState<ApiDoctor | null>(null)
 
   useEffect(() => {
     fetchDoctors().then(setDoctors).finally(() => setLoading(false))
@@ -151,6 +153,12 @@ export default function AdminDoctors() {
                     <button onClick={() => openEdit(doc)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
                       Изменить
                     </button>
+                    <button
+                      onClick={() => setAvailabilityTarget(doc)}
+                      className="text-gray-600 hover:text-gray-800 text-xs font-medium"
+                    >
+                      Слоты
+                    </button>
                     <button onClick={() => setDeleteTarget(doc.id)} className="text-red-400 hover:text-red-600 text-xs font-medium">
                       Удалить
                     </button>
@@ -221,6 +229,13 @@ export default function AdminDoctors() {
         <ConfirmDelete
           onConfirm={() => handleDelete(deleteTarget)}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {availabilityTarget && (
+        <AvailabilityModal
+          target={{ kind: 'doctor', id: availabilityTarget.id, title: availabilityTarget.name }}
+          onClose={() => setAvailabilityTarget(null)}
         />
       )}
     </div>

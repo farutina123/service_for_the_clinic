@@ -2,7 +2,7 @@
  * API-клиент для МедКлиника.
  * Все запросы идут через Vite proxy: /api → http://localhost:8000
  */
-import type { Service, Appointment } from './data/mockData'
+import type { Service, Appointment, ScheduleDay, TimeSlot } from './data/mockData'
 
 const API_BASE = '/api'
 
@@ -56,6 +56,20 @@ export interface ApiAppointment {
   notes: string | null
   user_id: string | null
   created_at: string
+}
+
+export interface ApiScheduleDay {
+  date: string
+  label: string
+  slots: Array<{
+    time: string
+    available: boolean
+  }>
+}
+
+export interface ApiAvailability {
+  date: string
+  times: string[]
 }
 
 // ── Вспомогательные функции ────────────────────────────────────────────────
@@ -242,6 +256,15 @@ export async function createAppointment(
   })
 }
 
+export async function fetchServiceSchedule(serviceId: string): Promise<ScheduleDay[]> {
+  const days = await apiFetch<ApiScheduleDay[]>(`/services/${encodeURIComponent(serviceId)}/schedule`)
+  return days.map(d => ({
+    date: d.date,
+    label: d.label,
+    slots: d.slots.map(s => ({ time: s.time, available: s.available } satisfies TimeSlot)),
+  }))
+}
+
 // ── Auth ───────────────────────────────────────────────────────────────────
 
 export interface ApiLoginResult {
@@ -367,6 +390,18 @@ export async function deleteDoctor(id: string): Promise<void> {
   await apiFetch<void>(`/doctors/${id}`, { method: 'DELETE' })
 }
 
+export async function fetchDoctorAvailability(doctorId: string, date: string): Promise<ApiAvailability> {
+  return apiFetch<ApiAvailability>(`/doctors/${encodeURIComponent(doctorId)}/availability?date=${encodeURIComponent(date)}`)
+}
+
+export async function replaceDoctorAvailability(doctorId: string, data: { date: string; times: string[] }): Promise<ApiAvailability & { doctor_id: string }> {
+  return apiFetch<ApiAvailability & { doctor_id: string }>(`/doctors/${encodeURIComponent(doctorId)}/availability`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
 // ── Services (admin) ───────────────────────────────────────────────────────
 
 export async function fetchAllServices(): Promise<ApiService[]> {
@@ -391,6 +426,18 @@ export async function updateService(id: string, data: Partial<Omit<ApiService, '
 
 export async function deleteService(id: string): Promise<void> {
   await apiFetch<void>(`/services/${id}`, { method: 'DELETE' })
+}
+
+export async function fetchServiceAvailability(serviceId: string, date: string): Promise<ApiAvailability> {
+  return apiFetch<ApiAvailability>(`/services/${encodeURIComponent(serviceId)}/availability?date=${encodeURIComponent(date)}`)
+}
+
+export async function replaceServiceAvailability(serviceId: string, data: { date: string; times: string[] }): Promise<ApiAvailability & { service_id: string }> {
+  return apiFetch<ApiAvailability & { service_id: string }>(`/services/${encodeURIComponent(serviceId)}/availability`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
 }
 
 // ── Appointments ───────────────────────────────────────────────────────────

@@ -117,6 +117,24 @@ CREATE TABLE IF NOT EXISTS appointments (
     created_at       TEXT    NOT NULL
 );
 
+-- Доступные слоты врача на конкретную дату (шаг слота определяется на уровне приложения)
+CREATE TABLE IF NOT EXISTS doctor_availability_slots (
+    doctor_id        TEXT NOT NULL REFERENCES doctors(id),
+    date             TEXT NOT NULL,   -- YYYY-MM-DD
+    time             TEXT NOT NULL,   -- HH:MM
+    created_at       TEXT NOT NULL,
+    PRIMARY KEY (doctor_id, date, time)
+);
+
+-- Доступные слоты услуги без привязки к врачу (diagnostics / analysis и т.п.)
+CREATE TABLE IF NOT EXISTS service_availability_slots (
+    service_id       TEXT NOT NULL REFERENCES services(id),
+    date             TEXT NOT NULL,   -- YYYY-MM-DD
+    time             TEXT NOT NULL,   -- HH:MM
+    created_at       TEXT NOT NULL,
+    PRIMARY KEY (service_id, date, time)
+);
+
 CREATE TABLE IF NOT EXISTS revoked_tokens (
     token      TEXT PRIMARY KEY,
     revoked_at TEXT NOT NULL DEFAULT ''

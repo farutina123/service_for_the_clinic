@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
 from enum import Enum
 from datetime import date, datetime
+from datetime import date as DateType
 
 PHONE_PATTERN = r"^(\+7|8)\d{10}$"
 TIME_PATTERN = r"^\d{2}:\d{2}$"
@@ -206,6 +207,17 @@ class AppointmentOut(BaseModel):
     notes: Optional[str] = None
     user_id: Optional[str] = None
     created_at: datetime
+
+
+# ── Availability ───────────────────────────────────────────────────────────────
+
+class AvailabilityUpdate(BaseModel):
+    date: DateType = Field(..., examples=["2026-04-15"], description="Дата в формате YYYY-MM-DD")
+    times: list[str] = Field(
+        default_factory=list,
+        description="Список слотов времени в формате HH:MM (шаг 30 минут)",
+        examples=[["09:00", "09:30", "10:00"]],
+    )
 
 
 # ── Telegram ───────────────────────────────────────────────────────────────────

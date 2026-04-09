@@ -1,5 +1,8 @@
 import type { APIRequestContext, Page } from '@playwright/test'
 
+const ADMIN_PHONE = '+79000000000'
+const ADMIN_PASSWORD = 'admin123'
+
 export function normalizePhone(phone: string): string {
   const raw = phone.trim()
   const digits = raw.replace(/\D/g, '')
@@ -11,6 +14,68 @@ export function normalizePhone(phone: string): string {
   // На всякий случай: если пришли только цифры, считаем, что это номер с 7.
   if (digits.startsWith('7')) return `+${digits}`
   return `+7${digits}`
+}
+
+async function ensureServiceAvailability(
+  request: APIRequestContext,
+  serviceId: string,
+): Promise<void> {
+  // С новым поведением schedule слоты появляются только если админ явно задал доступность.
+  const loginRes = await request.post('http://localhost:8000/auth/login', {
+    headers: { 'Content-Type': 'application/json' },
+    data: { phone: ADMIN_PHONE, password: ADMIN_PASSWORD },
+  })
+  if (!loginRes.ok()) {
+    const body = await loginRes.text()
+    throw new Error(`Не удалось залогиниться админом для задания доступности: status=${loginRes.status()} body=${body}`)
+  }
+  const { access_token: token } = (await loginRes.json()) as { access_token: string }
+  const authHeaders = { Authorization: `Bearer ${token}` }
+
+  const svcRes = await request.get(`http://localhost:8000/services/${encodeURIComponent(serviceId)}`)
+  if (!svcRes.ok()) {
+    const body = await svcRes.text()
+    throw new Error(`Не удалось получить услугу: status=${svcRes.status()} body=${body}`)
+  }
+  const svc = (await svcRes.json()) as { doctor_id: string | null }
+
+  // Слоты появляются только после явной установки админом.
+  // Для устойчивости к UTC/локальному времени берём дату подальше (через 7 дней),
+  // и если это воскресенье — сдвигаем на понедельник (schedule пропускает воскресенье).
+  const d = new Date()
+  d.setDate(d.getDate() + 7)
+  if (d.getDay() === 0) d.setDate(d.getDate() + 1)
+  const date = d.toISOString().split('T')[0]
+  // Задаём широкий набор слотов, чтобы с учётом уже существующих записей
+  // в schedule почти наверняка оставался хотя бы один доступный.
+  const payload = {
+    date,
+    times: [
+      '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+      '12:00', '12:30', '14:00', '14:30', '15:00', '15:30',
+      '16:00', '16:30', '17:00', '17:30',
+    ],
+  }
+
+  if (svc.doctor_id) {
+    const res = await request.put(`http://localhost:8000/doctors/${encodeURIComponent(svc.doctor_id)}/availability`, {
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      data: payload,
+    })
+    if (!res.ok()) {
+      const body = await res.text()
+      throw new Error(`Не удалось задать доступность врача: status=${res.status()} body=${body}`)
+    }
+  } else {
+    const res = await request.put(`http://localhost:8000/services/${encodeURIComponent(serviceId)}/availability`, {
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      data: payload,
+    })
+    if (!res.ok()) {
+      const body = await res.text()
+      throw new Error(`Не удалось задать доступность услуги: status=${res.status()} body=${body}`)
+    }
+  }
 }
 
 export async function stubTelegramForUnlinkedUser(page: Page) {
@@ -193,6 +258,7 @@ export async function createAppointmentFlow(
   }
 
   let serviceName: string
+  let serviceId: string | null = null
   if (params.request && params.preferDoctorlessService !== false) {
     // Стабильнее всего выбирать doctorless услугу по данным API,
     // потому что названия в UI могут отличаться/кодироваться по-разному.
@@ -202,13 +268,72 @@ export async function createAppointmentFlow(
     if (!doctorless) throw new Error('Не удалось получить список doctorless услуг')
 
     serviceName = doctorless.name
+    serviceId = doctorless.id
     await page.goto(`/booking?serviceId=${encodeURIComponent(doctorless.id)}`)
   } else {
     const selected = await selectServiceAndProceed(page)
     serviceName = selected.serviceName
   }
 
-  const { selectedDate, selectedTime } = await selectDateTimeAndProceed(page)
+  // Выбор слота:
+  // - если есть APIRequestContext и мы знаем serviceId — выбираем доступный слот по данным /services/:id/schedule,
+  //   чтобы тест не зависел от заполненности БД;
+  // - иначе fallback на "кликаем куда получится" по UI.
+  let selectedDate: string
+  let selectedTime: string
+  if (params.request && serviceId) {
+    // Гарантируем, что у услуги будет хотя бы один слот (его задаёт админ).
+    await ensureServiceAvailability(params.request, serviceId)
+
+    const scheduleRes = await params.request.get(`http://localhost:8000/services/${encodeURIComponent(serviceId)}/schedule`)
+    if (!scheduleRes.ok()) {
+      const body = await scheduleRes.text()
+      throw new Error(`Не удалось получить schedule услуги: status=${scheduleRes.status()} body=${body}`)
+    }
+    const schedule = (await scheduleRes.json()) as Array<{
+      date: string
+      label: string
+      slots: Array<{ time: string; available: boolean }>
+    }>
+
+    const day = schedule.find(d => d.slots.some(s => s.available))
+    if (!day) throw new Error('В schedule не найдено ни одного доступного слота')
+    const slot = day.slots.find(s => s.available)!
+
+    await page.getByRole('heading', { name: 'Выберите дату и время' }).waitFor()
+    const step2Root = page.getByRole('heading', { name: 'Выберите дату и время' }).locator('xpath=..')
+    const labelSecondPart = day.label.split(', ')[1] ?? day.label
+
+    await step2Root.locator('button').filter({ hasText: labelSecondPart }).first().click()
+    const slotBtn = step2Root.getByRole('button', { name: slot.time }).first()
+    try {
+      await slotBtn.waitFor({ state: 'visible', timeout: 12_000 })
+      await slotBtn.click({ timeout: 5_000 })
+    } catch {
+      // Fallback: выбираем любой первый доступный тайм-слот, если UI перерисовался.
+      const timeButtons = step2Root
+        .locator('button')
+        .filter({ hasText: /\d{2}:\d{2}/ })
+      const timeCount = await timeButtons.count()
+      for (let i = 0; i < timeCount; i++) {
+        const btn = timeButtons.nth(i)
+        const isDisabled = await btn.evaluate((el: HTMLElement) => (el as HTMLButtonElement).disabled)
+        if (isDisabled) continue
+        await btn.click({ timeout: 5_000 })
+        break
+      }
+    }
+
+    selectedDate = day.date
+    selectedTime = slot.time
+
+    const nextButton = page.getByRole('button', { name: /Далее\s*→/ })
+    await nextButton.click()
+  } else {
+    const picked = await selectDateTimeAndProceed(page)
+    selectedDate = picked.selectedDate
+    selectedTime = picked.selectedTime
+  }
 
   // Если пользователь авторизован, UI может пропустить шаг 3 и перейти сразу к шагу 4.
   // Поэтому заполняем шаг 3 только если он реально виден.

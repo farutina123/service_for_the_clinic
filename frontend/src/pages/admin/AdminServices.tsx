@@ -8,6 +8,7 @@ import {
   type ApiService,
   type ApiDoctor,
 } from '../../api'
+import AvailabilityModal from './AvailabilityModal'
 
 const EMPTY: Omit<ApiService, 'id' | 'is_active'> = {
   name: '',
@@ -27,6 +28,7 @@ export default function AdminServices() {
   const [editId,   setEditId]   = useState<string | null>(null)
   const [saving,   setSaving]   = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [availabilityTarget, setAvailabilityTarget] = useState<ApiService | null>(null)
 
   useEffect(() => {
     Promise.all([fetchAllServices(), fetchDoctors()])
@@ -126,6 +128,12 @@ export default function AdminServices() {
                       className="text-blue-600 hover:text-blue-800 text-xs font-medium"
                     >
                       Изменить
+                    </button>
+                    <button
+                      onClick={() => setAvailabilityTarget(svc)}
+                      className="text-gray-600 hover:text-gray-800 text-xs font-medium"
+                    >
+                      Слоты
                     </button>
                     <button
                       onClick={() => setDeleteTarget(svc.id)}
@@ -231,6 +239,25 @@ export default function AdminServices() {
         <ConfirmDelete
           onConfirm={() => handleDelete(deleteTarget)}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {availabilityTarget && (
+        <AvailabilityModal
+          target={
+            availabilityTarget.doctor_id
+              ? {
+                  kind: 'doctor',
+                  id: availabilityTarget.doctor_id,
+                  title: `${availabilityTarget.name} (врач)`,
+                }
+              : {
+                  kind: 'service',
+                  id: availabilityTarget.id,
+                  title: `${availabilityTarget.name} (услуга без врача)`,
+                }
+          }
+          onClose={() => setAvailabilityTarget(null)}
         />
       )}
     </div>
