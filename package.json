@@ -1,0 +1,8 @@
+{
+  "name": "service-for-the-clinic",
+  "private": true,
+  "scripts": {
+    "test": "npm run test --prefix frontend",
+    "build": "npm run build --prefix frontend"
+  }
+}
