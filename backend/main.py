@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 # Всегда backend/.env, даже если uvicorn запущен из корня репозитория
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
+import os
+
 from fastapi import FastAPI
 import logging
 import time
@@ -24,11 +26,32 @@ from fastapi.staticfiles import StaticFiles
 
 from database import init_db
 from config import (
+    APP_ENV,
     CORS_ORIGINS,
     SHOW_DEMO_CREDENTIALS_IN_DOCS,
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_USE_POLLING,
 )
+
+_sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+    _raw_traces = os.getenv("SENTRY_TRACES_SAMPLE_RATE", "").strip()
+    if _raw_traces:
+        _traces_sample_rate = float(_raw_traces)
+    else:
+        _traces_sample_rate = (
+            0.1 if APP_ENV in ("production", "prod") else 1.0
+        )
+
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[FastApiIntegration()],
+        traces_sample_rate=_traces_sample_rate,
+        environment=APP_ENV,
+    )
 from auth.router import router as auth_router
 from routers.users import router as users_router
 from routers.doctors import router as doctors_router

@@ -71,7 +71,7 @@ AUTH_REGISTER_RATE_WINDOW_SECONDS: int = _positive_int(
 
 # Глобальный выключатель rate limit для /auth (для E2E/отладки).
 AUTH_RATE_LIMIT_ENABLED: bool = (
-    os.getenv("AUTH_RATE_LIMIT_ENABLED", "true").strip().lower() == "true"
+    os.getenv("AUTH_RATE_LIMIT_ENABLED", "false").strip().lower() == "true"
 )
 
 SEED_DEMO_DATA: bool = (
